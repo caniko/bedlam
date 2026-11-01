@@ -59,7 +59,11 @@ enum Host {
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    let cli = Cli::parse();
+    let mut argv: Vec<String> = std::env::args().collect();
+    if argv.len() == 3 && argv[1] == "--argv-hex" {
+        argv = std::iter::once(argv[0].clone()).chain(pool::unhex_argv(&argv[2])?).collect();
+    }
+    let cli = Cli::parse_from(argv);
     let pool = pool::Pool::load(cli.pool)?;
     match cli.cmd {
         Cmd::Mcp => mcp::serve(pool).await,

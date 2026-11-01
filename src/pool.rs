@@ -113,7 +113,9 @@ impl Pool {
             c.args(["-o", "BatchMode=yes", "-o", "ConnectTimeout=5", "-p"])
                 .arg(h.ssh_port.to_string())
                 .arg(format!("{}@{}", self.user, h.address))
-                .arg(format!("mutiny {}", args.iter().map(|a| quote(a)).collect::<Vec<_>>().join(" ")));
+                // The remote login shell is nushell on the fleet, so argv travels
+                // as shell-neutral hex rather than POSIX quoting.
+                .arg(format!("/etc/profiles/per-user/{}/bin/mutiny --argv-hex {}", self.user, hex(&serde_json::to_vec(args)?)));
             c
         };
         cmd.stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::piped()).kill_on_drop(true);
@@ -164,8 +166,15 @@ impl Pool {
     }
 }
 
-fn quote(s: &str) -> String {
-    format!("'{}'", s.replace('\'', r"'\''"))
+fn hex(bytes: &[u8]) -> String {
+    bytes.iter().map(|b| format!("{b:02x}")).collect()
+}
+
+/// Inverse of [`hex`]: the argv a remote caller sent with `--argv-hex`.
+pub fn unhex_argv(s: &str) -> Result<Vec<String>> {
+    ensure!(s.len() % 2 == 0 && s.is_ascii(), "malformed --argv-hex");
+    let bytes = (0..s.len()).step_by(2).map(|i| u8::from_str_radix(&s[i..i + 2], 16)).collect::<Result<Vec<_>, _>>()?;
+    Ok(serde_json::from_slice(&bytes)?)
 }
 
 /// This host's capacity. Any missing or duplicate reading makes it ineligible (fail closed).
@@ -280,5 +289,12 @@ mod tests {
     fn amc_json() {
         let j = br#"{"budget_bytes":51539607552,"reserve_bytes":17179869184,"committed_bytes":1073741824,"entries":[],"waiting":{},"unreconciled":[]}"#;
         assert_eq!(parse_amc(j).unwrap(), 48 * 1024 - 1024);
+    }
+
+    #[test]
+    fn argv_hex_roundtrip() {
+        let args = ["host", "exec", "a", r#"echo 'x' "$(id)"; ls | wc"#];
+        assert_eq!(unhex_argv(&hex(&serde_json::to_vec(&args).unwrap())).unwrap(), args);
+        assert!(unhex_argv("zz").is_err());
     }
 }
