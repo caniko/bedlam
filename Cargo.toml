@@ -1,0 +1,17 @@
+[package]
+name = "mutiny"
+version = "0.1.0"
+edition = "2024"
+license = "Apache-2.0"
+description = "Self-hosted microVM sandboxes for coding agents, placed by AMC admission"
+
+[dependencies]
+amc-admission = { git = "https://github.com/caniko/amc", rev = "f90c86bda133b75500e22ae4c73774ba21edb0e2" }
+anyhow = "1"
+clap = { version = "4", features = ["derive"] }
+# local+net only: the default features download the msb/libkrunfw runtime at build time and pull dbus/keyring.
+microsandbox = { version = "=0.7.13", default-features = false, features = ["local", "net"] }
+rmcp = { version = "=3.8.0", features = ["server", "transport-io", "macros"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tokio = { version = "1", features = ["full"] }
