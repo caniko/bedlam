@@ -193,7 +193,10 @@ fn hex(bytes: &[u8]) -> String {
 
 /// Inverse of [`hex`]: the argv a remote caller sent with `--argv-hex`.
 pub fn unhex_argv(s: &str) -> Result<Vec<String>> {
-    ensure!(s.len() % 2 == 0 && s.is_ascii(), "malformed --argv-hex");
+    ensure!(
+        s.len().is_multiple_of(2) && s.is_ascii(),
+        "malformed --argv-hex"
+    );
     let bytes = (0..s.len())
         .step_by(2)
         .map(|i| u8::from_str_radix(&s[i..i + 2], 16))
