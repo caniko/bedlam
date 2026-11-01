@@ -28,6 +28,8 @@ pub struct PoolHost {
     pub name: String,
     pub address: String,
     pub ssh_port: u16,
+    #[serde(default)]
+    pub priority: u8,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -41,6 +43,9 @@ pub struct HostStatus {
     pub mem_available_mib: Option<u64>,
     pub mem_full_psi: Option<f64>,
     pub on_ac: Option<bool>,
+    /// From pool.json, not reported by the host.
+    #[serde(skip)]
+    pub priority: u8,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub reason: Option<String>,
 }
@@ -54,6 +59,7 @@ impl HostStatus {
             mem_available_mib: None,
             mem_full_psi: None,
             on_ac: None,
+            priority: 0,
             reason: Some(why.to_string()),
         }
     }
@@ -68,13 +74,13 @@ impl std::fmt::Display for NoHostAdmits {
 }
 impl std::error::Error for NoHostAdmits {}
 
-/// Most free budget among eligible hosts; ties go to `local`.
+/// Highest (priority, free budget) among eligible hosts; ties go to `local`.
 // ponytail: greedy placement, no reservation between status and run; AMC queue is the backstop; add a two-phase claim if races appear
 pub fn place<'a>(hosts: &'a [HostStatus], local: &str) -> Result<&'a str, NoHostAdmits> {
     hosts
         .iter()
         .filter(|h| h.eligible)
-        .max_by_key(|h| (h.free_budget_mib.unwrap_or(0), h.host == local))
+        .max_by_key(|h| (h.priority, h.free_budget_mib.unwrap_or(0), h.host == local))
         .map(|h| h.host.as_str())
         .ok_or(NoHostAdmits)
 }
@@ -126,7 +132,7 @@ impl Pool {
     pub async fn gather(self: &std::sync::Arc<Self>) -> Vec<HostStatus> {
         let mut set = JoinSet::new();
         for h in &self.hosts {
-            let (pool, name) = (self.clone(), h.name.clone());
+            let (pool, name, priority) = (self.clone(), h.name.clone(), h.priority);
             set.spawn(async move {
                 let got = async {
                     let out = pool.run_on(&name, &["host", "status", "--json"], None).await?;
@@ -135,6 +141,7 @@ impl Pool {
                 match got.await {
                     Ok(mut s) => {
                         s.host = name;
+                        s.priority = priority;
                         s
                     }
                     Err(e) => HostStatus::down(&name, e),
@@ -169,7 +176,7 @@ pub fn local_status() -> HostStatus {
     let mem = ok(meminfo_mib(), &mut why);
     let psi = ok(memory_full_psi(), &mut why);
     let ac = ok(on_ac(), &mut why);
-    let mut s = HostStatus { host, eligible: false, free_budget_mib: free, mem_available_mib: mem, mem_full_psi: psi, on_ac: ac, reason: None };
+    let mut s = HostStatus { host, eligible: false, free_budget_mib: free, mem_available_mib: mem, mem_full_psi: psi, on_ac: ac, priority: 0, reason: None };
     if free.is_some_and(|f| f < MIN_FREE_MIB) {
         why.push(format!("free AMC budget below {MIN_FREE_MIB} MiB"));
     }
@@ -262,6 +269,11 @@ mod tests {
         assert_eq!(place(&tie, "b").unwrap(), "b", "tie prefers local");
         assert_eq!(place(&tie, "a").unwrap(), "a");
         assert!(place(&[h("a", false, 1)], "a").is_err());
+        let p = |host, eligible, free, priority| HostStatus { priority, ..h(host, eligible, free) };
+        let prio = [p("atlas", true, 9000, 0), p("camel", true, 1000, 1)];
+        assert_eq!(place(&prio, "atlas").unwrap(), "camel", "priority beats budget");
+        let down = [p("atlas", true, 9000, 0), p("camel", false, 99_000, 1)];
+        assert_eq!(place(&down, "atlas").unwrap(), "atlas", "ineligible priority host never chosen");
     }
 
     #[test]

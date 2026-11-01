@@ -23,6 +23,8 @@ upstream; Mutiny trusts `hosts`.
 }
 ```
 
+Hosts take an optional `"priority"` (u8, default 0, e.g. 1 for workers): placement prefers the highest priority, then the most free budget, then `localHost`.
+
 Every host needs `mutiny` and `amc` on its non-interactive `PATH`, a shared `pool.json`, and key-based SSH.
 
 ## Commands
