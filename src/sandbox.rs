@@ -5,7 +5,15 @@ use anyhow::{Context, Result, bail, ensure};
 use microsandbox::{Sandbox, SecretSource};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
-use std::{path::PathBuf, process::Command, sync::{Arc, atomic::{AtomicBool, Ordering}}, time::Duration};
+use std::{
+    path::PathBuf,
+    process::Command,
+    sync::{
+        Arc,
+        atomic::{AtomicBool, Ordering},
+    },
+    time::Duration,
+};
 use tokio::signal::unix::{SignalKind, signal};
 
 /// Guest overhead on top of the VM's RAM when sizing the AMC reservation.
@@ -26,7 +34,10 @@ pub struct Spec {
 }
 
 fn safe(s: &str, extra: &str) -> bool {
-    !s.is_empty() && !s.starts_with('-') && s.chars().all(|c| c.is_ascii_alphanumeric() || "_.-".contains(c) || extra.contains(c))
+    !s.is_empty()
+        && !s.starts_with('-')
+        && s.chars()
+            .all(|c| c.is_ascii_alphanumeric() || "_.-".contains(c) || extra.contains(c))
 }
 
 impl Spec {
@@ -36,24 +47,36 @@ impl Spec {
             ensure!(safe(n, ""), "bad sandbox name");
         }
         if self.fork_of.is_none() {
-            ensure!(self.repo.as_deref().is_some_and(|r| safe(r, "/")), "repo must be owner/name");
-            ensure!(self.git_ref.as_deref().is_some_and(|r| safe(r, "/")), "ref has unsafe characters");
+            ensure!(
+                self.repo.as_deref().is_some_and(|r| safe(r, "/")),
+                "repo must be owner/name"
+            );
+            ensure!(
+                self.git_ref.as_deref().is_some_and(|r| safe(r, "/")),
+                "ref has unsafe characters"
+            );
         }
         Ok(())
     }
 }
 
 fn hostname() -> String {
-    std::fs::read_to_string("/proc/sys/kernel/hostname").unwrap_or_default().trim().into()
+    std::fs::read_to_string("/proc/sys/kernel/hostname")
+        .unwrap_or_default()
+        .trim()
+        .into()
 }
 
 fn suffix() -> String {
-    let t = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default();
+    let t = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default();
     format!("{:08x}", t.subsec_nanos() ^ std::process::id())
 }
 
 fn ready_file(name: &str) -> Result<PathBuf> {
-    let dir = PathBuf::from(std::env::var_os("XDG_RUNTIME_DIR").context("XDG_RUNTIME_DIR unset")?).join("mutiny");
+    let dir = PathBuf::from(std::env::var_os("XDG_RUNTIME_DIR").context("XDG_RUNTIME_DIR unset")?)
+        .join("mutiny");
     std::fs::create_dir_all(&dir)?;
     Ok(dir.join(format!("{name}.ready")))
 }
@@ -63,14 +86,18 @@ fn ready_file(name: &str) -> Result<PathBuf> {
 pub async fn run(pool: &Pool, spec_json: &str) -> Result<()> {
     let mut spec: Spec = serde_json::from_str(spec_json).context("parse --spec")?;
     spec.validate()?;
-    let name = spec.name.get_or_insert_with(|| format!("{PREFIX}{}", suffix())).clone();
+    let name = spec
+        .name
+        .get_or_insert_with(|| format!("{PREFIX}{}", suffix()))
+        .clone();
     let ready = ready_file(&name)?;
     let _ = std::fs::remove_file(&ready);
     let unit = format!("mutiny-{name}");
     let status = Command::new("systemd-run")
         .args(["--user", "--quiet", "--collect", "--unit", &unit])
         .arg(std::env::current_exe()?)
-        .arg("--pool").arg(&pool.path)
+        .arg("--pool")
+        .arg(&pool.path)
         .args(["host", "admit", "--spec", &serde_json::to_string(&spec)?])
         .status()?;
     ensure!(status.success(), "systemd-run failed");
@@ -79,8 +106,14 @@ pub async fn run(pool: &Pool, spec_json: &str) -> Result<()> {
             println!("{}", json!({ "id": format!("{}:{name}", hostname()) }));
             return Ok(());
         }
-        if !Command::new("systemctl").args(["--user", "--quiet", "is-active", &unit]).status()?.success() {
-            bail!("unit {unit} ended before the sandbox was ready; see journalctl --user -u {unit}");
+        if !Command::new("systemctl")
+            .args(["--user", "--quiet", "is-active", &unit])
+            .status()?
+            .success()
+        {
+            bail!(
+                "unit {unit} ended before the sandbox was ready; see journalctl --user -u {unit}"
+            );
         }
         tokio::time::sleep(Duration::from_secs(1)).await;
     }
@@ -93,12 +126,27 @@ pub async fn admit(pool: &Pool, spec_json: &str) -> Result<()> {
     let spec: Spec = serde_json::from_str(spec_json)?;
     let mem = (u64::from(spec.memory_mib.unwrap_or(2048)) + OVERHEAD_MIB) << 20;
     let amc = std::env::var_os("PATH")
-        .and_then(|p| std::env::split_paths(&p).map(|d| d.join("amc")).find(|c| c.is_file()))
+        .and_then(|p| {
+            std::env::split_paths(&p)
+                .map(|d| d.join("amc"))
+                .find(|c| c.is_file())
+        })
         .context("amc not on PATH")?;
     let mut req = ExecRequest::queued(&pool.contract, mem, 86400, amc)?;
     // ponytail: 24h lease cap (AMC's runtime ceiling) and 5 min queue wait; make configurable if either bites
     req.wait = Some(Duration::from_secs(300));
-    let mut exec = Exec::new(req, [std::env::current_exe()?.as_os_str(), "--pool".as_ref(), pool.path.as_os_str(), "host".as_ref(), "boot".as_ref(), "--spec".as_ref(), spec_json.as_ref()]);
+    let mut exec = Exec::new(
+        req,
+        [
+            std::env::current_exe()?.as_os_str(),
+            "--pool".as_ref(),
+            pool.path.as_os_str(),
+            "host".as_ref(),
+            "boot".as_ref(),
+            "--spec".as_ref(),
+            spec_json.as_ref(),
+        ],
+    );
     exec.env("XDG_RUNTIME_DIR", std::env::var("XDG_RUNTIME_DIR")?);
     let stop = Arc::new(AtomicBool::new(false));
     let flag = stop.clone();
@@ -107,7 +155,9 @@ pub async fn admit(pool: &Pool, spec_json: &str) -> Result<()> {
         term.recv().await;
         flag.store(true, Ordering::SeqCst);
     });
-    let code = tokio::task::spawn_blocking(move || exec.run(|| stop.load(Ordering::SeqCst).then_some(15))).await??;
+    let code =
+        tokio::task::spawn_blocking(move || exec.run(|| stop.load(Ordering::SeqCst).then_some(15)))
+            .await??;
     std::process::exit(code)
 }
 
@@ -117,7 +167,13 @@ pub async fn boot(pool: &Pool, spec_json: &str) -> Result<()> {
     spec.validate()?;
     let name = spec.name.clone().context("spec has no name")?;
     let sandbox = if let Some(src) = &spec.fork_of {
-        Sandbox::get(src).await?.connect().await?.fork(&name).fork().await?
+        Sandbox::get(src)
+            .await?
+            .connect()
+            .await?
+            .fork(&name)
+            .fork()
+            .await?
     } else {
         let cache = pool.sccache_dir.to_string_lossy().into_owned();
         let mut b = Sandbox::builder(&name)
@@ -131,16 +187,37 @@ pub async fn boot(pool: &Pool, spec_json: &str) -> Result<()> {
             // Value goes file -> env -> microsandbox `source`, so it is never in the spec, the DB or logs.
             let var = format!("MUTINY_SECRET_{key}");
             // SAFETY: still single-threaded here apart from tokio workers that never read the environment.
-            unsafe { std::env::set_var(&var, std::fs::read_to_string(file).with_context(|| format!("read secret {key}"))?.trim()) };
+            unsafe {
+                std::env::set_var(
+                    &var,
+                    std::fs::read_to_string(file)
+                        .with_context(|| format!("read secret {key}"))?
+                        .trim(),
+                )
+            };
             // ponytail: every secret is released only to GitHub hosts; add per-secret hosts to pool.json for other providers
-            b = b.secret(|s| s.env(key).source(SecretSource::env(var)).allow("github.com").allow("api.github.com"));
+            b = b.secret(|s| {
+                s.env(key)
+                    .source(SecretSource::env(var))
+                    .allow("github.com")
+                    .allow("api.github.com")
+            });
         }
         b.create().await?
     };
     if spec.fork_of.is_none() {
-        let (repo, git_ref) = (spec.repo.as_deref().unwrap_or_default(), spec.git_ref.as_deref().unwrap_or_default());
-        let auth = if pool.secret_files.contains_key("GITHUB_TOKEN") { "x-access-token:$GITHUB_TOKEN@" } else { "" };
-        let script = format!("set -e; apk add --no-cache git sccache >/dev/null; git clone -q https://{auth}github.com/{repo}.git /work/repo; cd /work/repo; git checkout -q {git_ref}");
+        let (repo, git_ref) = (
+            spec.repo.as_deref().unwrap_or_default(),
+            spec.git_ref.as_deref().unwrap_or_default(),
+        );
+        let auth = if pool.secret_files.contains_key("GITHUB_TOKEN") {
+            "x-access-token:$GITHUB_TOKEN@"
+        } else {
+            ""
+        };
+        let script = format!(
+            "set -e; apk add --no-cache git sccache >/dev/null; git clone -q https://{auth}github.com/{repo}.git /work/repo; cd /work/repo; git checkout -q {git_ref}"
+        );
         let out = sandbox.shell(script).await?;
         if !out.status().success {
             let err = out.stderr().unwrap_or_default();
@@ -164,12 +241,18 @@ async fn connect(name: &str) -> Result<Sandbox> {
 }
 
 pub async fn exec(name: &str, command: &str) -> Result<()> {
-    let out = connect(name).await?.exec_with("sh", |e| e.args(["-c", command]).cwd("/work/repo")).await?;
-    println!("{}", json!({
-        "exitCode": out.status().code,
-        "stdout": String::from_utf8_lossy(out.stdout_bytes()),
-        "stderr": String::from_utf8_lossy(out.stderr_bytes()),
-    }));
+    let out = connect(name)
+        .await?
+        .exec_with("sh", |e| e.args(["-c", command]).cwd("/work/repo"))
+        .await?;
+    println!(
+        "{}",
+        json!({
+            "exitCode": out.status().code,
+            "stdout": String::from_utf8_lossy(out.stdout_bytes()),
+            "stderr": String::from_utf8_lossy(out.stderr_bytes()),
+        })
+    );
     Ok(())
 }
 

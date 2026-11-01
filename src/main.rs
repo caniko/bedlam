@@ -47,13 +47,28 @@ enum Host {
         #[arg(long)]
         spec: String,
     },
-    Exec { name: String, command: String },
-    Read { name: String, path: String },
+    Exec {
+        name: String,
+        command: String,
+    },
+    Read {
+        name: String,
+        path: String,
+    },
     /// Content comes from stdin
-    Write { name: String, path: String },
-    Fork { name: String },
-    Snapshot { name: String },
-    Destroy { name: String },
+    Write {
+        name: String,
+        path: String,
+    },
+    Fork {
+        name: String,
+    },
+    Snapshot {
+        name: String,
+    },
+    Destroy {
+        name: String,
+    },
     List,
 }
 
@@ -61,7 +76,9 @@ enum Host {
 async fn main() -> Result<()> {
     let mut argv: Vec<String> = std::env::args().collect();
     if argv.len() == 3 && argv[1] == "--argv-hex" {
-        argv = std::iter::once(argv[0].clone()).chain(pool::unhex_argv(&argv[2])?).collect();
+        argv = std::iter::once(argv[0].clone())
+            .chain(pool::unhex_argv(&argv[2])?)
+            .collect();
     }
     let cli = Cli::parse_from(argv);
     let pool = pool::Pool::load(cli.pool)?;
@@ -83,7 +100,9 @@ async fn main() -> Result<()> {
             Host::Exec { name, command } => sandbox::exec(&name, &command).await,
             Host::Read { name, path } => sandbox::read(&name, &path).await,
             Host::Write { name, path } => sandbox::write(&name, &path).await,
-            Host::Fork { name } => sandbox::run(&pool, &serde_json::json!({ "forkOf": name }).to_string()).await,
+            Host::Fork { name } => {
+                sandbox::run(&pool, &serde_json::json!({ "forkOf": name }).to_string()).await
+            }
             Host::Snapshot { name } => sandbox::snapshot(&name).await,
             Host::Destroy { name } => sandbox::destroy(&name).await,
             Host::List => sandbox::list().await,

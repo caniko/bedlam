@@ -91,12 +91,16 @@ impl Pool {
             Some(p) => p,
             None => match std::env::var_os("XDG_CONFIG_HOME") {
                 Some(x) => PathBuf::from(x),
-                None => PathBuf::from(std::env::var_os("HOME").context("HOME unset")?).join(".config"),
+                None => {
+                    PathBuf::from(std::env::var_os("HOME").context("HOME unset")?).join(".config")
+                }
             }
             .join("mutiny/pool.json"),
         };
-        let text = std::fs::read_to_string(&path).with_context(|| format!("read {}", path.display()))?;
-        let mut pool: Pool = serde_json::from_str(&text).with_context(|| format!("parse {}", path.display()))?;
+        let text =
+            std::fs::read_to_string(&path).with_context(|| format!("read {}", path.display()))?;
+        let mut pool: Pool =
+            serde_json::from_str(&text).with_context(|| format!("parse {}", path.display()))?;
         pool.path = path;
         Ok(pool)
     }
@@ -108,17 +112,28 @@ impl Pool {
             c.arg("--pool").arg(&self.path).args(args);
             c
         } else {
-            let h = self.hosts.iter().find(|h| h.name == host).with_context(|| format!("unknown host {host}"))?;
+            let h = self
+                .hosts
+                .iter()
+                .find(|h| h.name == host)
+                .with_context(|| format!("unknown host {host}"))?;
             let mut c = Command::new("ssh");
             c.args(["-o", "BatchMode=yes", "-o", "ConnectTimeout=5", "-p"])
                 .arg(h.ssh_port.to_string())
                 .arg(format!("{}@{}", self.user, h.address))
                 // The remote login shell is nushell on the fleet, so argv travels
                 // as shell-neutral hex rather than POSIX quoting.
-                .arg(format!("/etc/profiles/per-user/{}/bin/mutiny --argv-hex {}", self.user, hex(&serde_json::to_vec(args)?)));
+                .arg(format!(
+                    "/etc/profiles/per-user/{}/bin/mutiny --argv-hex {}",
+                    self.user,
+                    hex(&serde_json::to_vec(args)?)
+                ));
             c
         };
-        cmd.stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::piped()).kill_on_drop(true);
+        cmd.stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .kill_on_drop(true);
         let mut child = cmd.spawn()?;
         let mut pipe = child.stdin.take().context("stdin")?;
         if let Some(s) = stdin {
@@ -126,7 +141,11 @@ impl Pool {
         }
         drop(pipe);
         let out = child.wait_with_output().await?;
-        ensure!(out.status.success(), "{host}: {}", String::from_utf8_lossy(&out.stderr).trim());
+        ensure!(
+            out.status.success(),
+            "{host}: {}",
+            String::from_utf8_lossy(&out.stderr).trim()
+        );
         Ok(String::from_utf8(out.stdout)?)
     }
 
@@ -137,7 +156,9 @@ impl Pool {
             let (pool, name, priority) = (self.clone(), h.name.clone(), h.priority);
             set.spawn(async move {
                 let got = async {
-                    let out = pool.run_on(&name, &["host", "status", "--json"], None).await?;
+                    let out = pool
+                        .run_on(&name, &["host", "status", "--json"], None)
+                        .await?;
                     Ok::<_, anyhow::Error>(serde_json::from_str::<HostStatus>(&out)?)
                 };
                 match got.await {
@@ -173,19 +194,34 @@ fn hex(bytes: &[u8]) -> String {
 /// Inverse of [`hex`]: the argv a remote caller sent with `--argv-hex`.
 pub fn unhex_argv(s: &str) -> Result<Vec<String>> {
     ensure!(s.len() % 2 == 0 && s.is_ascii(), "malformed --argv-hex");
-    let bytes = (0..s.len()).step_by(2).map(|i| u8::from_str_radix(&s[i..i + 2], 16)).collect::<Result<Vec<_>, _>>()?;
+    let bytes = (0..s.len())
+        .step_by(2)
+        .map(|i| u8::from_str_radix(&s[i..i + 2], 16))
+        .collect::<Result<Vec<_>, _>>()?;
     Ok(serde_json::from_slice(&bytes)?)
 }
 
 /// This host's capacity. Any missing or duplicate reading makes it ineligible (fail closed).
 pub fn local_status() -> HostStatus {
-    let host = std::fs::read_to_string("/proc/sys/kernel/hostname").unwrap_or_default().trim().to_string();
+    let host = std::fs::read_to_string("/proc/sys/kernel/hostname")
+        .unwrap_or_default()
+        .trim()
+        .to_string();
     let mut why = Vec::new();
     let free = ok(amc_free_mib(), &mut why);
     let mem = ok(meminfo_mib(), &mut why);
     let psi = ok(memory_full_psi(), &mut why);
     let ac = ok(on_ac(), &mut why);
-    let mut s = HostStatus { host, eligible: false, free_budget_mib: free, mem_available_mib: mem, mem_full_psi: psi, on_ac: ac, priority: 0, reason: None };
+    let mut s = HostStatus {
+        host,
+        eligible: false,
+        free_budget_mib: free,
+        mem_available_mib: mem,
+        mem_full_psi: psi,
+        on_ac: ac,
+        priority: 0,
+        reason: None,
+    };
     if free.is_some_and(|f| f < MIN_FREE_MIB) {
         why.push(format!("free AMC budget below {MIN_FREE_MIB} MiB"));
     }
@@ -214,7 +250,10 @@ struct AmcStatus {
 }
 
 fn amc_free_mib() -> Result<u64> {
-    let out = std::process::Command::new("amc").args(["admission", "status", "--json"]).output().context("run amc")?;
+    let out = std::process::Command::new("amc")
+        .args(["admission", "status", "--json"])
+        .output()
+        .context("run amc")?;
     ensure!(out.status.success(), "amc admission status failed");
     parse_amc(&out.stdout)
 }
@@ -244,7 +283,10 @@ fn meminfo_mib() -> Result<u64> {
 fn memory_full_psi() -> Result<f64> {
     let text = std::fs::read_to_string("/proc/pressure/memory")?;
     let line = single(&text, "full ")?;
-    let v = line.split_whitespace().find_map(|w| w.strip_prefix("avg10=")).context("avg10")?;
+    let v = line
+        .split_whitespace()
+        .find_map(|w| w.strip_prefix("avg10="))
+        .context("avg10")?;
     Ok(v.parse()?)
 }
 
@@ -267,22 +309,45 @@ mod tests {
     use super::*;
 
     fn h(host: &str, eligible: bool, free: u64) -> HostStatus {
-        HostStatus { eligible, free_budget_mib: Some(free), ..HostStatus::down(host, "") }
+        HostStatus {
+            eligible,
+            free_budget_mib: Some(free),
+            ..HostStatus::down(host, "")
+        }
     }
 
     #[test]
     fn placement() {
-        let hosts = [h("a", false, 90_000), h("b", true, 1000), h("c", true, 5000)];
-        assert_eq!(place(&hosts, "b").unwrap(), "c", "ineligible never chosen, most budget wins");
+        let hosts = [
+            h("a", false, 90_000),
+            h("b", true, 1000),
+            h("c", true, 5000),
+        ];
+        assert_eq!(
+            place(&hosts, "b").unwrap(),
+            "c",
+            "ineligible never chosen, most budget wins"
+        );
         let tie = [h("a", true, 5000), h("b", true, 5000)];
         assert_eq!(place(&tie, "b").unwrap(), "b", "tie prefers local");
         assert_eq!(place(&tie, "a").unwrap(), "a");
         assert!(place(&[h("a", false, 1)], "a").is_err());
-        let p = |host, eligible, free, priority| HostStatus { priority, ..h(host, eligible, free) };
+        let p = |host, eligible, free, priority| HostStatus {
+            priority,
+            ..h(host, eligible, free)
+        };
         let prio = [p("atlas", true, 9000, 0), p("camel", true, 1000, 1)];
-        assert_eq!(place(&prio, "atlas").unwrap(), "camel", "priority beats budget");
+        assert_eq!(
+            place(&prio, "atlas").unwrap(),
+            "camel",
+            "priority beats budget"
+        );
         let down = [p("atlas", true, 9000, 0), p("camel", false, 99_000, 1)];
-        assert_eq!(place(&down, "atlas").unwrap(), "atlas", "ineligible priority host never chosen");
+        assert_eq!(
+            place(&down, "atlas").unwrap(),
+            "atlas",
+            "ineligible priority host never chosen"
+        );
     }
 
     #[test]
@@ -294,7 +359,10 @@ mod tests {
     #[test]
     fn argv_hex_roundtrip() {
         let args = ["host", "exec", "a", r#"echo 'x' "$(id)"; ls | wc"#];
-        assert_eq!(unhex_argv(&hex(&serde_json::to_vec(&args).unwrap())).unwrap(), args);
+        assert_eq!(
+            unhex_argv(&hex(&serde_json::to_vec(&args).unwrap())).unwrap(),
+            args
+        );
         assert!(unhex_argv("zz").is_err());
     }
 }

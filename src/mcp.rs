@@ -2,8 +2,7 @@
 use crate::pool::{Pool, place};
 use anyhow::{Context, Result};
 use rmcp::{
-    ServiceExt, handler::server::wrapper::Parameters, schemars, tool, tool_router,
-    transport::stdio,
+    ServiceExt, handler::server::wrapper::Parameters, schemars, tool, tool_router, transport::stdio,
 };
 use serde::Deserialize;
 use serde_json::json;
@@ -46,7 +45,13 @@ struct WriteArgs {
 
 impl Mutiny {
     /// Run `mutiny host <args>` on the host named by the id prefix.
-    async fn on(&self, id: &str, verb: &str, rest: &[&str], stdin: Option<&str>) -> Result<String, String> {
+    async fn on(
+        &self,
+        id: &str,
+        verb: &str,
+        rest: &[&str],
+        stdin: Option<&str>,
+    ) -> Result<String, String> {
         let go = async {
             let (host, name) = id.split_once(':').context("id must be host:name")?;
             let mut args = vec!["host", verb, name];
@@ -64,15 +69,24 @@ impl Mutiny {
         serde_json::to_string(&self.0.gather().await).unwrap_or_default()
     }
 
-    #[tool(description = "Start a microVM sandbox with the repo cloned at ref on the pool host with most free capacity; returns {id}")]
+    #[tool(
+        description = "Start a microVM sandbox with the repo cloned at ref on the pool host with most free capacity; returns {id}"
+    )]
     async fn sandbox_create(&self, Parameters(a): Parameters<Create>) -> Result<String, String> {
         let hosts = self.0.gather().await;
         let host = place(&hosts, &self.0.local_host).map_err(|e| e.to_string())?;
-        let spec = json!({ "repo": a.repo, "ref": a.r#ref, "cpus": a.cpus, "memoryMiB": a.memory_mib }).to_string();
-        self.0.run_on(host, &["host", "run", "--spec", &spec], None).await.map_err(|e| format!("{e:#}"))
+        let spec =
+            json!({ "repo": a.repo, "ref": a.r#ref, "cpus": a.cpus, "memoryMiB": a.memory_mib })
+                .to_string();
+        self.0
+            .run_on(host, &["host", "run", "--spec", &spec], None)
+            .await
+            .map_err(|e| format!("{e:#}"))
     }
 
-    #[tool(description = "Run a shell command in the sandbox (cwd /work/repo); returns {exitCode, stdout, stderr}")]
+    #[tool(
+        description = "Run a shell command in the sandbox (cwd /work/repo); returns {exitCode, stdout, stderr}"
+    )]
     async fn exec(&self, Parameters(a): Parameters<ExecArgs>) -> Result<String, String> {
         self.on(&a.id, "exec", &[&a.command], None).await
     }
@@ -84,10 +98,14 @@ impl Mutiny {
 
     #[tool(description = "Write a file in the sandbox")]
     async fn write_file(&self, Parameters(a): Parameters<WriteArgs>) -> Result<String, String> {
-        self.on(&a.id, "write", &[&a.path], Some(&a.content)).await.map(|_| "ok".into())
+        self.on(&a.id, "write", &[&a.path], Some(&a.content))
+            .await
+            .map(|_| "ok".into())
     }
 
-    #[tool(description = "Fork a running sandbox (disk and memory, copy-on-write) into a new sandbox; returns {id}")]
+    #[tool(
+        description = "Fork a running sandbox (disk and memory, copy-on-write) into a new sandbox; returns {id}"
+    )]
     async fn fork(&self, Parameters(a): Parameters<Id>) -> Result<String, String> {
         self.on(&a.id, "fork", &[], None).await
     }
@@ -99,7 +117,9 @@ impl Mutiny {
 
     #[tool(description = "Destroy the sandbox and release its AMC lease")]
     async fn destroy(&self, Parameters(a): Parameters<Id>) -> Result<String, String> {
-        self.on(&a.id, "destroy", &[], None).await.map(|_| "ok".into())
+        self.on(&a.id, "destroy", &[], None)
+            .await
+            .map(|_| "ok".into())
     }
 
     #[tool(description = "List sandboxes on every pool host")]
@@ -116,6 +136,10 @@ impl Mutiny {
 }
 
 pub async fn serve(pool: Pool) -> Result<()> {
-    Mutiny(Arc::new(pool)).serve(stdio()).await?.waiting().await?;
+    Mutiny(Arc::new(pool))
+        .serve(stdio())
+        .await?
+        .waiting()
+        .await?;
     Ok(())
 }
