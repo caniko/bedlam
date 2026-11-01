@@ -30,7 +30,10 @@
 
       toolchain = harbor.lib.rust.mkToolchain {inherit pkgs;};
       inherit (toolchain) craneLib rustToolchain;
-      fmtToolchain = harbor.lib.rust.mkToolchain {inherit pkgs; toolchainProfile = "nightly";};
+      fmtToolchain = harbor.lib.rust.mkToolchain {
+        inherit pkgs;
+        toolchainProfile = "nightly";
+      };
       src = craneLib.cleanCargoSource ./.;
       commonArgs = {
         inherit src;
@@ -38,7 +41,7 @@
       };
       cargoArtifacts = craneLib.buildDepsOnly commonArgs;
       package = craneLib.buildPackage (commonArgs // {inherit cargoArtifacts;});
-      treefmtEval = treefmt-nix.lib.evalModule pkgs (import ./nix/treefmt.nix { rustfmtPackage = fmtToolchain.rustToolchain; });
+      treefmtEval = treefmt-nix.lib.evalModule pkgs (import ./nix/treefmt.nix {rustfmtPackage = fmtToolchain.rustToolchain;});
       pre-commit-check = git-hooks.lib.${system}.run {
         src = ./.;
         hooks = import ./nix/pre-commit.nix {
@@ -62,34 +65,36 @@
       };
       devShells.default = craneLib.devShell {
         checks = self.checks.${system};
-                packages = with pkgs; [
-          treefmtEval.config.build.wrapper
-          cargo-about
-          cargo-audit
-          cargo-cyclonedx
-          cargo-deny
-          cargo-llvm-cov
-          cargo-sbom
-          cargo-nextest
-          cosign
-          file
-          gnutar
-          gzip
-          jq
-          minisign
-          nodejs
-          pre-commit
-          rpm
-          util-linux
-          unzip
-          zip
-          reprepro
-          rust-analyzer
-          taplo
-        ] ++ pre-commit-check.enabledPackages;
+        packages = with pkgs;
+          [
+            treefmtEval.config.build.wrapper
+            cargo-about
+            cargo-audit
+            cargo-cyclonedx
+            cargo-deny
+            cargo-llvm-cov
+            cargo-sbom
+            cargo-nextest
+            cosign
+            file
+            gnutar
+            gzip
+            jq
+            minisign
+            nodejs
+            pre-commit
+            rpm
+            util-linux
+            unzip
+            zip
+            reprepro
+            rust-analyzer
+            taplo
+          ]
+          ++ pre-commit-check.enabledPackages;
         shellHook = pre-commit-check.shellHook;
       };
-      
+
       apps.local-check-fast = {
         type = "app";
         program = let
@@ -227,4 +232,3 @@
       };
     });
 }
-
