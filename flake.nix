@@ -41,12 +41,15 @@
       };
       cargoArtifacts = craneLib.buildDepsOnly commonArgs;
       msbRuntime = import ./nix/msb.nix {inherit pkgs;};
-      # Wrapped for run time: msb + libkrunfw come from the store. amc is NOT bundled (supplied on PATH).
+      # On Linux, wrapped for run time: msb + libkrunfw come from the store. amc is
+      # NOT bundled (supplied on PATH). libkrunfw is Linux-only; other systems get
+      # the bare binary and bring their own runtime.
+      inherit (pkgs.stdenv.hostPlatform) isLinux;
       package = craneLib.buildPackage (commonArgs
         // {
           inherit cargoArtifacts;
-          nativeBuildInputs = [pkgs.makeWrapper];
-          postInstall = ''
+          nativeBuildInputs = pkgs.lib.optional isLinux pkgs.makeWrapper;
+          postInstall = pkgs.lib.optionalString isLinux ''
             wrapProgram $out/bin/mutiny \
               --set-default MSB_PATH ${msbRuntime.msb}/bin/msb \
               --set-default MSB_LIBKRUNFW_PATH ${msbRuntime.libkrunfw}/lib/libkrunfw.so.5.6.1
@@ -62,10 +65,13 @@
         };
       };
     in {
-      packages = {
-        default = package;
-        inherit (msbRuntime) msb libkrunfw agentd;
-      };
+      packages =
+        {
+          default = package;
+        }
+        // pkgs.lib.optionalAttrs isLinux {
+          inherit (msbRuntime) msb libkrunfw agentd;
+        };
       formatter = treefmtEval.config.build.wrapper;
       checks = {
         default = package;

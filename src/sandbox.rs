@@ -81,6 +81,15 @@ fn ready_file(name: &str) -> Result<PathBuf> {
     Ok(dir.join(format!("{name}.ready")))
 }
 
+/// Variables a wrapper sets for us (runtime store paths, amc on PATH). Transient units start
+/// from the user manager's environment and `current_exe()` is the unwrapped binary, so each
+/// detach must carry them explicitly.
+fn carried() -> impl Iterator<Item = (&'static str, String)> {
+    ["PATH", "MSB_PATH", "MSB_LIBKRUNFW_PATH", "MSB_HOME"]
+        .into_iter()
+        .filter_map(|k| std::env::var(k).ok().map(|v| (k, v)))
+}
+
 /// `host run`: start `mutiny host admit` in a transient user unit (independent of this SSH session)
 /// and print the id once the sandbox is ready.
 pub async fn run(pool: &Pool, spec_json: &str) -> Result<()> {
@@ -95,6 +104,7 @@ pub async fn run(pool: &Pool, spec_json: &str) -> Result<()> {
     let unit = format!("mutiny-{name}");
     let status = Command::new("systemd-run")
         .args(["--user", "--quiet", "--collect", "--unit", &unit])
+        .args(carried().map(|(k, v)| format!("--setenv={k}={v}")))
         .arg(std::env::current_exe()?)
         .arg("--pool")
         .arg(&pool.path)
@@ -148,6 +158,9 @@ pub async fn admit(pool: &Pool, spec_json: &str) -> Result<()> {
         ],
     );
     exec.env("XDG_RUNTIME_DIR", std::env::var("XDG_RUNTIME_DIR")?);
+    for (k, v) in carried() {
+        exec.env(k, v);
+    }
     let stop = Arc::new(AtomicBool::new(false));
     let flag = stop.clone();
     let mut term = signal(SignalKind::terminate())?;
