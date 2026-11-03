@@ -10,12 +10,13 @@
     rev = "44c1e63176259e048f42893a5779de8b08fe0ec6"; # tag v${version}
     hash = "sha256-zvgK4ml8i1wPXGUHmLMbC9AoaK8rcV58oNNwjaKKy/c=";
   };
-  cargoLock.lockFile = "${src}/Cargo.lock";
+  # Fixed-output vendor (no import-from-derivation); one hash covers both crates of the workspace.
+  cargoHash = "sha256-D//ypsFILmaCVZn8miSoYZpxaoj5dt/EIrthMQiVq2Y=";
 
   # Static musl guest init/agent (upstream: `just build-agentd`).
   agentd = pkgs.pkgsStatic.rustPlatform.buildRustPackage {
     pname = "microsandbox-agentd";
-    inherit version src cargoLock;
+    inherit version src cargoHash;
     cargoBuildFlags = ["-p" "microsandbox-agentd"];
     doCheck = false;
   };
@@ -54,7 +55,7 @@
 
   msb = pkgs.rustPlatform.buildRustPackage {
     pname = "msb";
-    inherit version src cargoLock;
+    inherit version src cargoHash;
     cargoBuildFlags = ["-p" "microsandbox-cli"];
     buildNoDefaultFeatures = true;
     buildFeatures = ["embed-binaries" "net" "ssh"];

@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.1.1 - 2026-11-03
+
+- Vendor the microsandbox runtime crates by fixed-output hash, so consumers evaluate Mutiny without import-from-derivation.
+
 ## 0.1.0 - 2026-11-03
 
 - Pooled microVM sandboxes for coding agents: microsandbox (libkrun) VMs on the pool host with the most free AMC budget, behind a stdio MCP server (`pool_status`, `sandbox_create`, `exec`, `read_file`, `write_file`, `fork`, `snapshot`, `destroy`, `list`).
