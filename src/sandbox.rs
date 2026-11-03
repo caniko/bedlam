@@ -1,19 +1,10 @@
 //! Local sandboxes: boot under an AMC lease, and thin wrappers over microsandbox.
 use crate::pool::Pool;
-use amc_admission::client::{Exec, ExecRequest};
 use anyhow::{Context, Result, bail, ensure};
 use microsandbox::{Sandbox, SecretSource};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
-use std::{
-    path::PathBuf,
-    process::Command,
-    sync::{
-        Arc,
-        atomic::{AtomicBool, Ordering},
-    },
-    time::Duration,
-};
+use std::{path::PathBuf, process::Command, time::Duration};
 use tokio::signal::unix::{SignalKind, signal};
 
 /// Guest overhead on top of the VM's RAM when sizing the AMC reservation.
@@ -130,48 +121,35 @@ pub async fn run(pool: &Pool, spec_json: &str) -> Result<()> {
     bail!("sandbox {name} not ready after 600s")
 }
 
-/// `host admit` (runs inside the transient unit): wait for AMC admission, then run `host boot`
+/// `host admit` (runs inside the transient unit): queue for AMC admission, then run `host boot`
 /// under the lease. The lease lasts exactly as long as the boot process.
 pub async fn admit(pool: &Pool, spec_json: &str) -> Result<()> {
     let spec: Spec = serde_json::from_str(spec_json)?;
-    let mem = (u64::from(spec.memory_mib.unwrap_or(2048)) + OVERHEAD_MIB) << 20;
-    let amc = std::env::var_os("PATH")
-        .and_then(|p| {
-            std::env::split_paths(&p)
-                .map(|d| d.join("amc"))
-                .find(|c| c.is_file())
-        })
-        .context("amc not on PATH")?;
-    let mut req = ExecRequest::queued(&pool.contract, mem, 86400, amc)?;
+    let mem = u64::from(spec.memory_mib.unwrap_or(2048)) + OVERHEAD_MIB;
     // ponytail: 24h lease cap (AMC's runtime ceiling) and 5 min queue wait; make configurable if either bites
-    req.wait = Some(Duration::from_secs(300));
-    let mut exec = Exec::new(
-        req,
-        [
-            std::env::current_exe()?.as_os_str(),
-            "--pool".as_ref(),
-            pool.path.as_os_str(),
-            "host".as_ref(),
-            "boot".as_ref(),
-            "--spec".as_ref(),
-            spec_json.as_ref(),
-        ],
-    );
-    exec.env("XDG_RUNTIME_DIR", std::env::var("XDG_RUNTIME_DIR")?);
-    for (k, v) in carried() {
-        exec.env(k, v);
-    }
-    let stop = Arc::new(AtomicBool::new(false));
-    let flag = stop.clone();
+    // amc forwards this environment (PATH, MSB_*, XDG_RUNTIME_DIR) to the admitted command.
+    let mut amc = tokio::process::Command::new("amc")
+        .args(["admission", "exec", "--queue", "--contract", &pool.contract])
+        .args(["--max-ram-usage", &format!("{mem}MiB")])
+        .args(["--runtime-max-sec", "86400", "--timeout", "300", "--"])
+        .arg(std::env::current_exe()?)
+        .arg("--pool")
+        .arg(&pool.path)
+        .args(["host", "boot", "--spec", spec_json])
+        .spawn()
+        .context("run amc")?;
     let mut term = signal(SignalKind::terminate())?;
-    tokio::spawn(async move {
-        term.recv().await;
-        flag.store(true, Ordering::SeqCst);
-    });
-    let code =
-        tokio::task::spawn_blocking(move || exec.run(|| stop.load(Ordering::SeqCst).then_some(15)))
-            .await??;
-    std::process::exit(code)
+    let status = tokio::select! {
+        s = amc.wait() => s?,
+        _ = term.recv() => {
+            // amc cancels or stops the admitted command on SIGTERM and releases the lease.
+            if let Some(pid) = amc.id() {
+                let _ = Command::new("kill").args(["-TERM", &pid.to_string()]).status();
+            }
+            amc.wait().await?
+        }
+    };
+    std::process::exit(status.code().unwrap_or(1))
 }
 
 /// `host boot` (runs inside the AMC unit): boot the VM, set it up, hold it until it exits.
