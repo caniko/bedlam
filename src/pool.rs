@@ -21,7 +21,6 @@ pub struct Pool {
     pub local_host: String,
     pub contract: String,
     pub hosts: Vec<PoolHost>,
-    pub sccache_dir: PathBuf,
     pub secret_files: BTreeMap<String, PathBuf>,
     #[serde(skip)]
     pub path: PathBuf,

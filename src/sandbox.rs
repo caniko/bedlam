@@ -1,7 +1,7 @@
 //! Local sandboxes: boot under an AMC lease, and thin wrappers over microsandbox.
 use crate::pool::Pool;
 use anyhow::{Context, Result, bail, ensure};
-use microsandbox::{Sandbox, SecretSource};
+use microsandbox::{Sandbox, SecretSource, sandbox::SandboxBuilder, size::SizeExt};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use std::{path::PathBuf, process::Command, time::Duration};
@@ -166,6 +166,33 @@ pub async fn admit(pool: &Pool, spec_json: &str) -> Result<()> {
     std::process::exit(status.code().unwrap_or(1))
 }
 
+/// Guest image, pinned by digest (nixos/nix 2.35.4, multi-arch index).
+const IMAGE: &str =
+    "docker.io/nixos/nix@sha256:f159a58f390677f41e8e900a74b6e2f9c7f27b364122ae6acf7a652ce6c551c0";
+
+/// The non-fork sandbox: pinned image, flakes on, secrets proxied to GitHub only.
+// Network policy is left at microsandbox's default (Public: public egress only; private, LAN and host denied).
+fn builder(pool: &Pool, spec: &Spec, name: &str) -> SandboxBuilder {
+    let mut b = Sandbox::builder(name)
+        .image_with(|i| i.oci(IMAGE).root_disk(16.gib()))
+        .cpus(spec.cpus.unwrap_or(2))
+        .memory(spec.memory_mib.unwrap_or(2048))
+        // ponytail: cache.nixos.org only; add the fleet Attic read-only once a guest-safe token exists
+        .env("NIX_CONFIG", "experimental-features = nix-command flakes");
+    for key in pool.secret_files.keys() {
+        // ponytail: every secret is released only to GitHub hosts; add per-secret hosts to pool.json for other providers
+        b = b.secret(|s| {
+            s.env(key)
+                .source(SecretSource::env(format!("MUTINY_SECRET_{key}")))
+                .allow("github.com")
+                .allow("api.github.com")
+                .substitute_in_header_fields(["Authorization"])
+                .require_tls_identity(true)
+        });
+    }
+    b
+}
+
 /// `host boot` (runs inside the AMC unit): boot the VM, set it up, hold it until it exits.
 pub async fn boot(pool: &Pool, spec_json: &str) -> Result<()> {
     let spec: Spec = serde_json::from_str(spec_json)?;
@@ -180,26 +207,7 @@ pub async fn boot(pool: &Pool, spec_json: &str) -> Result<()> {
             .fork()
             .await?
     } else {
-        let cache = pool.sccache_dir.to_string_lossy().into_owned();
-        let mut b = Sandbox::builder(&name)
-            .image("alpine") // ponytail: stock alpine + apk add at boot (slow start, musl); bake an image when start latency matters
-            .cpus(spec.cpus.unwrap_or(2))
-            .memory(spec.memory_mib.unwrap_or(2048))
-            .volume(cache.clone(), |v| v.bind(cache.clone()))
-            .env("RUSTC_WRAPPER", "sccache")
-            .env("SCCACHE_DIR", cache);
-        for key in pool.secret_files.keys() {
-            // ponytail: every secret is released only to GitHub hosts; add per-secret hosts to pool.json for other providers
-            b = b.secret(|s| {
-                s.env(key)
-                    .source(SecretSource::env(format!("MUTINY_SECRET_{key}")))
-                    .allow("github.com")
-                    .allow("api.github.com")
-                    .substitute_in_header_fields(["Authorization"])
-                    .require_tls_identity(true)
-            });
-        }
-        b.create().await?
+        builder(pool, &spec, &name).create().await?
     };
     if spec.fork_of.is_none() {
         let (repo, git_ref) = (
@@ -213,7 +221,7 @@ pub async fn boot(pool: &Pool, spec_json: &str) -> Result<()> {
             ""
         };
         let script = format!(
-            "set -e; apk add --no-cache git sccache >/dev/null; git {auth} clone -q https://github.com/{repo}.git /work/repo; cd /work/repo; git checkout -q {git_ref}"
+            "set -e; command -v git >/dev/null || {{ echo 'guest image has no git' >&2; exit 127; }}; git {auth} clone -q https://github.com/{repo}.git /work/repo; cd /work/repo; git checkout -q {git_ref}"
         );
         let out = sandbox.shell(script).await?;
         if !out.status().success {
