@@ -174,24 +174,15 @@ pub async fn boot(pool: &Pool, spec_json: &str) -> Result<()> {
             .volume(cache.clone(), |v| v.bind(cache.clone()))
             .env("RUSTC_WRAPPER", "sccache")
             .env("SCCACHE_DIR", cache);
-        for (key, file) in &pool.secret_files {
-            // Value goes file -> env -> microsandbox `source`, so it is never in the spec, the DB or logs.
-            let var = format!("MUTINY_SECRET_{key}");
-            // SAFETY: still single-threaded here apart from tokio workers that never read the environment.
-            unsafe {
-                std::env::set_var(
-                    &var,
-                    std::fs::read_to_string(file)
-                        .with_context(|| format!("read secret {key}"))?
-                        .trim(),
-                )
-            };
+        for key in pool.secret_files.keys() {
             // ponytail: every secret is released only to GitHub hosts; add per-secret hosts to pool.json for other providers
             b = b.secret(|s| {
                 s.env(key)
-                    .source(SecretSource::env(var))
+                    .source(SecretSource::env(format!("MUTINY_SECRET_{key}")))
                     .allow("github.com")
                     .allow("api.github.com")
+                    .substitute_in_header_fields(["Authorization"])
+                    .require_tls_identity(true)
             });
         }
         b.create().await?
@@ -202,12 +193,13 @@ pub async fn boot(pool: &Pool, spec_json: &str) -> Result<()> {
             spec.git_ref.as_deref().unwrap_or_default(),
         );
         let auth = if pool.secret_files.contains_key("GITHUB_TOKEN") {
-            "x-access-token:$GITHUB_TOKEN@"
+            // The proxy never substitutes in a Basic userinfo URL (it is base64-encoded), only in headers.
+            r#"-c http.extraHeader="Authorization: Bearer $GITHUB_TOKEN""#
         } else {
             ""
         };
         let script = format!(
-            "set -e; apk add --no-cache git sccache >/dev/null; git clone -q https://{auth}github.com/{repo}.git /work/repo; cd /work/repo; git checkout -q {git_ref}"
+            "set -e; apk add --no-cache git sccache >/dev/null; git {auth} clone -q https://github.com/{repo}.git /work/repo; cd /work/repo; git checkout -q {git_ref}"
         );
         let out = sandbox.shell(script).await?;
         if !out.status().success {
