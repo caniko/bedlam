@@ -18,14 +18,13 @@ upstream; Mutiny trusts `hosts`.
   "localHost": "atlas",
   "contract": "sandbox",
   "hosts": [{"name": "atlas", "address": "192.168.178.2", "sshPort": 22}],
-  "sccacheDir": "/home/can/.cache/sccache",
   "secretFiles": {"GITHUB_TOKEN": "/run/user/1000/agenix/github-token"}
 }
 ```
 
 Hosts take an optional `"priority"` (u8, default 0, e.g. 1 for workers): placement prefers the highest priority, then the most free budget, then `localHost`.
 
-Every host needs `mutiny` and `amc` on its non-interactive `PATH`, a shared `pool.json`, and key-based SSH.
+Every host needs `mutiny` and `amc` (the `amc admission exec` CLI) on its non-interactive `PATH`, a shared `pool.json`, and key-based SSH.
 
 ## Commands
 
@@ -46,13 +45,38 @@ free AMC budget (ties go to the local host) and runs `mutiny host run` there. Ot
 ## AMC lease semantics
 
 `host run` re-execs itself in a transient `systemd-run --user --unit mutiny-<name>` and returns once the VM is ready.
-That unit queues for AMC admission (contract from `pool.json`, memory = VM RAM + 512 MiB, 5 min wait) and holds the
+That unit queues for AMC admission via `amc admission exec --queue` (contract from `pool.json`, memory = VM RAM + 512 MiB, 5 min wait) and holds the
 lease for the VM's lifetime, independent of the launching SSH session. Destroying the sandbox (or stopping the unit)
 ends the VM and releases the lease.
 
+## Guest
+
+The guest is `docker.io/nixos/nix`, pinned by digest (Nix 2.35.4), with a 16 GiB root disk and
+`experimental-features = nix-command flakes`. The repo is cloned to `/work/repo`; agents run toolchains with
+`nix develop -c ...` via `exec` (cache.nixos.org only). No host directory is mounted, so untrusted guest code cannot poison host caches
+(a leftover `sccacheDir` in an old `pool.json` is ignored).
+
+Egress uses microsandbox's default policy (the `Public` profile): public internet only, private/LAN ranges and the host
+are denied. Mutiny sets no network policy of its own.
+
 Secrets from `secretFiles` go through microsandbox's secret proxy: the guest sees a placeholder, and the real value is
-substituted only on requests to `github.com` / `api.github.com`. The `sccacheDir` is bind-mounted at the same path
-with `RUSTC_WRAPPER=sccache` and `SCCACHE_DIR` set.
+substituted only in the `Authorization` header of requests to `github.com` / `api.github.com`, and only after the proxy
+has verified the server's TLS identity. Clones authenticate with `git -c http.extraHeader="Authorization: Bearer $GITHUB_TOKEN"`
+(a token in the URL's Basic userinfo is base64-encoded and would never be substituted).
+
+## Capacity and validation
+
+A host's free budget is the AMC `admission status` of the user's ledger; if the shared-host broker socket
+(`/run/amc-host/admission.sock`) exists it is the lower of that and `admission host-status`, and an unreadable
+broker makes the host ineligible.
+
+Sandbox names must be `mu-` prefixed with `[A-Za-z0-9_.-]`, for every verb and for `forkOf`; `repo` must be exactly
+`owner/name`. SSH to pool hosts uses `StrictHostKeyChecking=yes`, so add each host key to `known_hosts` first.
+
+## Security
+
+The libkrun VMM runs as the unprivileged user inside the user's systemd manager, so a guest escape equals that
+user's account. This is an accepted risk.
 
 ## Build
 
@@ -60,4 +84,5 @@ with `RUSTC_WRAPPER=sccache` and `SCCACHE_DIR` set.
 runtime. At run time the host needs `msb` and `libkrunfw` (install via the microsandbox installer, or set
 `MSB_PATH` / `MSB_LIBKRUNFW_PATH`) and `/dev/kvm`.
 
-`cargo test` runs the placement and AMC-status parse tests. Licensed Apache-2.0.
+`cargo test` runs the placement, AMC-status parse and validation tests; `cargo test -- --ignored` also boots a real
+guest (needs `/dev/kvm` and `MSB_PATH` / `MSB_LIBKRUNFW_PATH`). Licensed Apache-2.0.
