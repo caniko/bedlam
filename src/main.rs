@@ -2,7 +2,7 @@ mod mcp;
 mod pool;
 mod sandbox;
 
-use anyhow::Result;
+use anyhow::{Context, Result};
 use clap::{Parser, Subcommand};
 use std::path::PathBuf;
 
@@ -72,8 +72,7 @@ enum Host {
     List,
 }
 
-#[tokio::main]
-async fn main() -> Result<()> {
+fn main() -> Result<()> {
     let mut argv: Vec<String> = std::env::args().collect();
     if argv.len() == 3 && argv[1] == "--argv-hex" {
         argv = std::iter::once(argv[0].clone())
@@ -82,30 +81,41 @@ async fn main() -> Result<()> {
     }
     let cli = Cli::parse_from(argv);
     let pool = pool::Pool::load(cli.pool)?;
-    match cli.cmd {
-        Cmd::Mcp => mcp::serve(pool).await,
-        Cmd::Host(h) => match h {
-            Host::Status { json } => {
-                let s = pool::local_status();
-                if json {
-                    println!("{}", serde_json::to_string(&s)?);
-                } else {
-                    println!("{}: {}", s.host, s.reason.as_deref().unwrap_or("eligible"));
-                }
-                Ok(())
-            }
-            Host::Run { spec } => sandbox::run(&pool, &spec).await,
-            Host::Admit { spec } => sandbox::admit(&pool, &spec).await,
-            Host::Boot { spec } => sandbox::boot(&pool, &spec).await,
-            Host::Exec { name, command } => sandbox::exec(&name, &command).await,
-            Host::Read { name, path } => sandbox::read(&name, &path).await,
-            Host::Write { name, path } => sandbox::write(&name, &path).await,
-            Host::Fork { name } => {
-                sandbox::run(&pool, &serde_json::json!({ "forkOf": name }).to_string()).await
-            }
-            Host::Snapshot { name } => sandbox::snapshot(&name).await,
-            Host::Destroy { name } => sandbox::destroy(&name).await,
-            Host::List => sandbox::list().await,
-        },
+    if matches!(cli.cmd, Cmd::Host(Host::Boot { .. })) {
+        // Secret values go file -> env -> microsandbox `source`, never into the spec, the DB or logs.
+        for (key, file) in &pool.secret_files {
+            let value =
+                std::fs::read_to_string(file).with_context(|| format!("read secret {key}"))?;
+            // SAFETY: no other thread exists yet; the tokio runtime is built below.
+            unsafe { std::env::set_var(format!("MUTINY_SECRET_{key}"), value.trim()) };
+        }
     }
+    tokio::runtime::Runtime::new()?.block_on(async {
+        match cli.cmd {
+            Cmd::Mcp => mcp::serve(pool).await,
+            Cmd::Host(h) => match h {
+                Host::Status { json } => {
+                    let s = pool::local_status();
+                    if json {
+                        println!("{}", serde_json::to_string(&s)?);
+                    } else {
+                        println!("{}: {}", s.host, s.reason.as_deref().unwrap_or("eligible"));
+                    }
+                    Ok(())
+                }
+                Host::Run { spec } => sandbox::run(&pool, &spec).await,
+                Host::Admit { spec } => sandbox::admit(&pool, &spec).await,
+                Host::Boot { spec } => sandbox::boot(&pool, &spec).await,
+                Host::Exec { name, command } => sandbox::exec(&name, &command).await,
+                Host::Read { name, path } => sandbox::read(&name, &path).await,
+                Host::Write { name, path } => sandbox::write(&name, &path).await,
+                Host::Fork { name } => {
+                    sandbox::run(&pool, &serde_json::json!({ "forkOf": name }).to_string()).await
+                }
+                Host::Snapshot { name } => sandbox::snapshot(&name).await,
+                Host::Destroy { name } => sandbox::destroy(&name).await,
+                Host::List => sandbox::list().await,
+            },
+        }
+    })
 }

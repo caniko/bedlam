@@ -50,41 +50,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e9d4ee0d472d1cd2e28c97dfa124b3d8d992e10eb0a035f33f5d12e3a177ba3b"
 
 [[package]]
-name = "amc-admission"
-version = "0.1.0"
-source = "git+https://github.com/caniko/amc?rev=f90c86bda133b75500e22ae4c73774ba21edb0e2#f90c86bda133b75500e22ae4c73774ba21edb0e2"
-dependencies = [
- "amc-runner",
- "anyhow",
- "nix 0.30.1",
- "serde",
- "serde_json",
- "sha2 0.10.9",
-]
-
-[[package]]
-name = "amc-runner"
-version = "0.1.0"
-source = "git+https://github.com/caniko/amc?rev=f90c86bda133b75500e22ae4c73774ba21edb0e2#f90c86bda133b75500e22ae4c73774ba21edb0e2"
-dependencies = [
- "amc-telemetry",
- "anyhow",
- "nix 0.30.1",
- "serde",
- "serde_json",
- "tracing",
-]
-
-[[package]]
-name = "amc-telemetry"
-version = "0.1.0"
-source = "git+https://github.com/caniko/amc?rev=f90c86bda133b75500e22ae4c73774ba21edb0e2#f90c86bda133b75500e22ae4c73774ba21edb0e2"
-dependencies = [
- "serde",
- "serde_json",
-]
-
-[[package]]
 name = "android_system_properties"
 version = "0.1.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2964,7 +2929,6 @@ checksum = "743fb55ba31b18fb1ecef6bdc9aa2743314978ac084044301a7eee33fb99a20d"
 name = "mutiny"
 version = "0.1.0"
 dependencies = [
- "amc-admission",
  "anyhow",
  "clap",
  "microsandbox",

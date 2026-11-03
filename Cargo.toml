@@ -6,7 +6,6 @@ license = "Apache-2.0"
 description = "Self-hosted microVM sandboxes for coding agents, placed by AMC admission"
 
 [dependencies]
-amc-admission = { git = "https://github.com/caniko/amc", rev = "f90c86bda133b75500e22ae4c73774ba21edb0e2" }
 anyhow = "1"
 clap = { version = "4", features = ["derive"] }
 # local+net only: the default features download the msb/libkrunfw runtime at build time and pull dbus/keyring.
