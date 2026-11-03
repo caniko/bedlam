@@ -31,15 +31,29 @@ fn safe(s: &str, extra: &str) -> bool {
             .all(|c| c.is_ascii_alphanumeric() || "_.-".contains(c) || extra.contains(c))
 }
 
+/// Trust boundary: names reach the microsandbox DB and systemd unit names; only ours (`mu-…`).
+fn check_name(n: &str) -> Result<()> {
+    ensure!(safe(n, "") && n.starts_with(PREFIX), "bad sandbox name");
+    Ok(())
+}
+
 impl Spec {
     /// Trust boundary: repo and ref are interpolated into a guest shell script.
     fn validate(&self) -> Result<()> {
         if let Some(n) = &self.name {
-            ensure!(safe(n, ""), "bad sandbox name");
+            check_name(n)?;
         }
-        if self.fork_of.is_none() {
+        if let Some(n) = &self.fork_of {
+            check_name(n)?;
+        } else {
             ensure!(
-                self.repo.as_deref().is_some_and(|r| safe(r, "/")),
+                self.repo.as_deref().is_some_and(|r| {
+                    safe(r, "/")
+                        && r.split_once('/').is_some_and(|(o, n)| {
+                            !n.contains('/')
+                                && ![o, n].iter().any(|p| matches!(*p, "" | "." | ".."))
+                        })
+                }),
                 "repo must be owner/name"
             );
             ensure!(
@@ -224,6 +238,7 @@ async fn connect(name: &str) -> Result<Sandbox> {
 }
 
 pub async fn exec(name: &str, command: &str) -> Result<()> {
+    check_name(name)?;
     let out = connect(name)
         .await?
         .exec_with("sh", |e| e.args(["-c", command]).cwd("/work/repo"))
@@ -240,12 +255,14 @@ pub async fn exec(name: &str, command: &str) -> Result<()> {
 }
 
 pub async fn read(name: &str, path: &str) -> Result<()> {
+    check_name(name)?;
     use std::io::Write;
     std::io::stdout().write_all(&connect(name).await?.fs().read(path).await?)?;
     Ok(())
 }
 
 pub async fn write(name: &str, path: &str) -> Result<()> {
+    check_name(name)?;
     let mut data = Vec::new();
     std::io::Read::read_to_end(&mut std::io::stdin(), &mut data)?;
     connect(name).await?.fs().write(path, data).await?;
@@ -253,6 +270,7 @@ pub async fn write(name: &str, path: &str) -> Result<()> {
 }
 
 pub async fn snapshot(name: &str) -> Result<()> {
+    check_name(name)?;
     let snap = format!("{name}-{}", suffix());
     Sandbox::get(name).await?.snapshot(&snap).await?;
     println!("{}", json!({ "snapshot": snap }));
@@ -260,6 +278,7 @@ pub async fn snapshot(name: &str) -> Result<()> {
 }
 
 pub async fn destroy(name: &str) -> Result<()> {
+    check_name(name)?;
     Sandbox::get(name).await?.destroy().await?;
     Ok(())
 }
@@ -272,4 +291,40 @@ pub async fn list() -> Result<()> {
         .map(|s| json!({ "id": format!("{host}:{}", s.name()), "status": format!("{:?}", s.status_snapshot()) })).collect();
     println!("{}", serde_json::to_string(&items)?);
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn spec(repo: &str, git_ref: &str) -> Spec {
+        Spec {
+            name: None,
+            repo: Some(repo.into()),
+            git_ref: Some(git_ref.into()),
+            cpus: None,
+            memory_mib: None,
+            fork_of: None,
+        }
+    }
+
+    #[test]
+    fn validation() {
+        assert!(spec("caniko/mutiny", "trunk").validate().is_ok());
+        for bad in ["../x", "a/b/c", "-x", "a/..", "./b", "a/", "/b", "nobar"] {
+            assert!(spec(bad, "trunk").validate().is_err(), "repo {bad}");
+        }
+        let named = |name: &str, fork_of: Option<&str>| Spec {
+            name: Some(name.into()),
+            fork_of: fork_of.map(Into::into),
+            ..spec("caniko/mutiny", "trunk")
+        };
+        assert!(named("mu-ok", Some("mu-src")).validate().is_ok());
+        assert!(named("other", None).validate().is_err(), "name needs mu-");
+        assert!(
+            named("mu-ok", Some("src")).validate().is_err(),
+            "fork_of needs mu-"
+        );
+        assert!(check_name("mu-a;rm").is_err());
+    }
 }

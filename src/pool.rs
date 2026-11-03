@@ -123,7 +123,8 @@ impl Pool {
                 .find(|h| h.name == host)
                 .with_context(|| format!("unknown host {host}"))?;
             let mut c = Command::new("ssh");
-            c.args(["-o", "BatchMode=yes", "-o", "ConnectTimeout=5", "-p"])
+            c.args(["-o", "BatchMode=yes", "-o", "StrictHostKeyChecking=yes"])
+                .args(["-o", "ConnectTimeout=5", "-p"])
                 .arg(h.ssh_port.to_string())
                 .arg(format!("{}@{}", self.user, h.address))
                 // The remote login shell is nushell on the fleet, so argv travels
