@@ -1,7 +1,11 @@
 //! Local sandboxes: boot under an AMC lease, and thin wrappers over microsandbox.
 use crate::pool::Pool;
 use anyhow::{Context, Result, bail, ensure};
-use microsandbox::{Sandbox, SecretSource, sandbox::SandboxBuilder, size::SizeExt};
+use microsandbox::{
+    Sandbox, SecretSource,
+    sandbox::{MAX_SANDBOX_LIST_LIMIT, SandboxBuilder},
+    size::SizeExt,
+};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use std::{path::PathBuf, process::Command, time::Duration};
@@ -292,11 +296,25 @@ pub async fn destroy(name: &str) -> Result<()> {
 }
 
 pub async fn list() -> Result<()> {
-    // ponytail: first page only (default page size); follow next_cursor if a host holds more sandboxes
-    let page = Sandbox::list().await?;
     let host = hostname();
-    let items: Vec<_> = page.sandboxes.iter().filter(|s| s.name().starts_with(PREFIX))
-        .map(|s| json!({ "id": format!("{host}:{}", s.name()), "status": format!("{:?}", s.status_snapshot()) })).collect();
+    let (mut items, mut cursor) = (Vec::new(), None::<String>);
+    loop {
+        let page = Sandbox::list_with(|l| {
+            let l = l.limit(MAX_SANDBOX_LIST_LIMIT);
+            match &cursor {
+                Some(c) => l.cursor(c.clone()),
+                None => l,
+            }
+        })
+        .await?;
+        items.extend(page.sandboxes.iter().filter(|s| s.name().starts_with(PREFIX)).map(|s| {
+            json!({ "id": format!("{host}:{}", s.name()), "status": format!("{:?}", s.status_snapshot()) })
+        }));
+        cursor = page.next_cursor;
+        if cursor.is_none() {
+            break;
+        }
+    }
     println!("{}", serde_json::to_string(&items)?);
     Ok(())
 }
@@ -334,5 +352,27 @@ mod tests {
             "fork_of needs mu-"
         );
         assert!(check_name("mu-a;rm").is_err());
+    }
+
+    #[tokio::test]
+    #[ignore = "needs /dev/kvm and MSB_PATH/MSB_LIBKRUNFW_PATH"]
+    async fn boot_and_tools() {
+        let pool = Pool {
+            user: String::new(),
+            local_host: String::new(),
+            contract: String::new(),
+            hosts: Vec::new(),
+            secret_files: Default::default(),
+            path: PathBuf::new(),
+        };
+        let name = format!("{PREFIX}test-{}", suffix());
+        let sb = builder(&pool, &spec("caniko/mutiny", "trunk"), &name)
+            .create()
+            .await
+            .unwrap();
+        let out = sb.shell("git --version && nix --version").await;
+        let _ = sb.destroy().await;
+        let out = out.unwrap();
+        assert!(out.status().success, "{}", out.stderr().unwrap_or_default());
     }
 }
