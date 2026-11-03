@@ -1,7 +1,12 @@
 //! pool.json, per-host capacity readings and placement.
 use anyhow::{Context, Result, bail, ensure};
 use serde::{Deserialize, Serialize};
-use std::{collections::BTreeMap, path::PathBuf, process::Stdio, time::Duration};
+use std::{
+    collections::BTreeMap,
+    path::{Path, PathBuf},
+    process::Stdio,
+    time::Duration,
+};
 use tokio::{io::AsyncWriteExt, process::Command, task::JoinSet};
 
 /// A host admits a sandbox only with this much free AMC budget and MemAvailable.
@@ -252,12 +257,22 @@ struct AmcStatus {
     committed_bytes: u64,
 }
 
+/// Free budget of this user's ledger; on shared-admission hosts also the host broker's, whichever is lower.
 fn amc_free_mib() -> Result<u64> {
+    let user = amc_free(&["admission", "status", "--json"])?;
+    if !Path::new("/run/amc-host/admission.sock").exists() {
+        return Ok(user);
+    }
+    // The socket exists, so an unreadable broker makes the host ineligible.
+    Ok(user.min(amc_free(&["admission", "host-status"]).context("amc host broker")?))
+}
+
+fn amc_free(args: &[&str]) -> Result<u64> {
     let out = std::process::Command::new("amc")
-        .args(["admission", "status", "--json"])
+        .args(args)
         .output()
         .context("run amc")?;
-    ensure!(out.status.success(), "amc admission status failed");
+    ensure!(out.status.success(), "amc {} failed", args.join(" "));
     parse_amc(&out.stdout)
 }
 
@@ -357,6 +372,13 @@ mod tests {
     fn amc_json() {
         let j = br#"{"budget_bytes":51539607552,"reserve_bytes":17179869184,"committed_bytes":1073741824,"entries":[],"waiting":{},"unreconciled":[]}"#;
         assert_eq!(parse_amc(j).unwrap(), 48 * 1024 - 1024);
+        // host-status: pretty JSON with the broker's own fields around the two we read
+        let host = b"{\n  \"budget_bytes\": 8589934592,\n  \"committed_bytes\": 1073741824,\n  \"reservations\": []\n}";
+        assert_eq!(parse_amc(host).unwrap(), 7 * 1024);
+        assert!(
+            parse_amc(b"{\"committed_bytes\":1}").is_err(),
+            "fail closed"
+        );
     }
 
     #[test]
