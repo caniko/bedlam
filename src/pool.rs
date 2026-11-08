@@ -221,7 +221,11 @@ pub fn local_status() -> HostStatus {
     let psi = ok(memory_full_psi(), &mut why);
     let ac = ok(on_ac(), &mut why);
     // libkrun needs KVM; firmware can leave virtualization off.
-    if let Err(e) = std::fs::OpenOptions::new().read(true).write(true).open("/dev/kvm") {
+    if let Err(e) = std::fs::OpenOptions::new()
+        .read(true)
+        .write(true)
+        .open("/dev/kvm")
+    {
         why.push(format!("/dev/kvm: {e}"));
     }
     let mut s = HostStatus {
