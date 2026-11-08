@@ -29,7 +29,7 @@ Every host needs `mutiny` and `amc` (the `amc admission exec` CLI) on its non-in
 ## Commands
 
 - `mutiny host status --json` - `{host, eligible, freeBudgetMiB, memAvailableMiB, memFullPsi, onAc, reason?}`.
-  Missing or duplicate readings make the host ineligible.
+  Missing or duplicate readings, or no read-write `/dev/kvm`, make the host ineligible.
 - `mutiny host run --spec '{"repo":"o/r","ref":"main","cpus":2,"memoryMiB":2048}'` - start a sandbox here, print `{"id":"<host>:<name>"}`.
 - `mutiny host exec|read|write|fork|snapshot|destroy|list` - operate on local sandboxes by name (`write` takes content on stdin).
 - `mutiny mcp` - stdio MCP server.
