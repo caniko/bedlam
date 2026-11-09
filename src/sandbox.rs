@@ -219,13 +219,15 @@ pub async fn boot(pool: &Pool, spec_json: &str) -> Result<()> {
             spec.git_ref.as_deref().unwrap_or_default(),
         );
         let auth = if pool.secret_files.contains_key("GITHUB_TOKEN") {
-            // The proxy never substitutes in a Basic userinfo URL (it is base64-encoded), only in headers.
-            r#"-c http.extraHeader="Authorization: Bearer $GITHUB_TOKEN""#
+            // Git smart-HTTP on github.com takes only Basic auth (Bearer is REST-only and gets a
+            // 401); the proxy substitutes inside the base64 Basic credentials. Global, so later
+            // fetches and pushes in the sandbox authenticate too.
+            r#"git config --global credential.helper '!f() { echo username=x-access-token; echo "password=$GITHUB_TOKEN"; }; f'; "#
         } else {
             ""
         };
         let script = format!(
-            "set -e; command -v git >/dev/null || {{ echo 'guest image has no git' >&2; exit 127; }}; git {auth} clone -q https://github.com/{repo}.git /work/repo; cd /work/repo; git checkout -q {git_ref}"
+            "set -e; command -v git >/dev/null || {{ echo 'guest image has no git' >&2; exit 127; }}; {auth}git clone -q https://github.com/{repo}.git /work/repo; cd /work/repo; git checkout -q {git_ref}"
         );
         let out = sandbox.shell(script).await?;
         if !out.status().success {

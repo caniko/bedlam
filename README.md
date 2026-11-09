@@ -61,8 +61,9 @@ are denied. Mutiny sets no network policy of its own.
 
 Secrets from `secretFiles` go through microsandbox's secret proxy: the guest sees a placeholder, and the real value is
 substituted only in the `Authorization` header of requests to `github.com` / `api.github.com`, and only after the proxy
-has verified the server's TLS identity. Clones authenticate with `git -c http.extraHeader="Authorization: Bearer $GITHUB_TOKEN"`
-(a token in the URL's Basic userinfo is base64-encoded and would never be substituted).
+has verified the server's TLS identity. Git in the guest authenticates through a global credential helper that sends
+`x-access-token:$GITHUB_TOKEN` as Basic auth (GitHub's git smart-HTTP rejects `Bearer`); the proxy substitutes inside
+the base64 credentials, so clones, fetches and pushes all work.
 
 ## Capacity and validation
 
