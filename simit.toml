@@ -1,5 +1,6 @@
 [ci]
 provider = "actions"
 platform = "github"
+push_branches = ["trunk"]
 runtime = "nix"
 runner = "ubuntu-24.04"
