@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- `homeModules.default`: `programs.mutiny` installs the binary wrapped with `amc`, `ssh` and `systemd` on `PATH` and renders `pool.json` from `poolHosts`, `secretFiles` and `runtimeDir`.
+
 ## 0.1.1 - 2026-11-03
 
 - Vendor the microsandbox runtime crates by fixed-output hash, so consumers evaluate Mutiny without import-from-derivation.

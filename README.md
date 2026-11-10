@@ -9,7 +9,7 @@ through a local stdio MCP server.
 
 ## pool.json
 
-Rendered by canix at `$XDG_CONFIG_HOME/mutiny/pool.json` (or pass `--pool <path>`). Weak hosts are excluded
+Read from `$XDG_CONFIG_HOME/mutiny/pool.json` (or pass `--pool <path>`). Weak hosts are excluded
 upstream; Mutiny trusts `hosts`.
 
 ```json
@@ -21,6 +21,10 @@ upstream; Mutiny trusts `hosts`.
   "secretFiles": {"GITHUB_TOKEN": "/run/user/1000/agenix/github-token"}
 }
 ```
+
+`homeModules.default` renders this file and installs `mutiny` wrapped with `amc`, `ssh` and `systemd` on `PATH`:
+`programs.mutiny.{enable, amcPackage, localHost, poolHosts, secretFiles, runtimeDir}`; the wrapped binary is
+`programs.mutiny.finalPackage`.
 
 Hosts take an optional `"priority"` (u8, default 0, e.g. 1 for workers): placement prefers the highest priority, then the most free budget, then `localHost`.
 
