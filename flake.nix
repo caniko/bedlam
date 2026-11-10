@@ -22,7 +22,8 @@
     git-hooks,
     ...
   }:
-    flake-utils.lib.eachDefaultSystem (system: let
+    {homeModules.default = import ./nix/home-module.nix self;}
+    // flake-utils.lib.eachDefaultSystem (system: let
       pkgs = import nixpkgs {
         inherit system;
         overlays = [(import rust-overlay)];
@@ -82,6 +83,10 @@
             cargoClippyExtraArgs = "--all-targets --all-features -- --deny warnings";
           });
         fmt = craneLib.cargoFmt {inherit src;};
+        home-module = import ./nix/home-module-test.nix {
+          inherit pkgs;
+          module = self.homeModules.default;
+        };
       };
       devShells.default = craneLib.devShell {
         checks = self.checks.${system};
