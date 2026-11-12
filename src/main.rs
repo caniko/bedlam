@@ -9,7 +9,7 @@ use std::path::PathBuf;
 #[derive(Parser)]
 #[command(version, about = "Self-hosted microVM sandboxes for coding agents")]
 struct Cli {
-    /// pool.json (default: $XDG_CONFIG_HOME/mutiny/pool.json)
+    /// pool.json (default: $XDG_CONFIG_HOME/bedlam/pool.json)
     #[arg(long, global = true)]
     pool: Option<PathBuf>,
     #[command(subcommand)]
@@ -87,7 +87,7 @@ fn main() -> Result<()> {
             let value =
                 std::fs::read_to_string(file).with_context(|| format!("read secret {key}"))?;
             // SAFETY: no other thread exists yet; the tokio runtime is built below.
-            unsafe { std::env::set_var(format!("MUTINY_SECRET_{key}"), value.trim()) };
+            unsafe { std::env::set_var(format!("BEDLAM_SECRET_{key}"), value.trim()) };
         }
     }
     tokio::runtime::Runtime::new()?.block_on(async {

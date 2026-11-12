@@ -1,4 +1,4 @@
-# Home Manager module: the wrapped `mutiny` binary and its pool.json.
+# Home Manager module: the wrapped `bedlam` binary and its pool.json.
 self: {
   config,
   lib,
@@ -6,18 +6,18 @@ self: {
   ...
 }: let
   inherit (lib) mkOption types;
-  cfg = config.programs.mutiny;
+  cfg = config.programs.bedlam;
   resolve =
     if cfg.runtimeDir == null
     then lib.id
     else lib.replaceStrings ["\${XDG_RUNTIME_DIR}"] [cfg.runtimeDir];
 in {
-  options.programs.mutiny = {
-    enable = lib.mkEnableOption "Mutiny pooled microVM sandboxes";
+  options.programs.bedlam = {
+    enable = lib.mkEnableOption "Bedlam pooled microVM sandboxes";
     package = mkOption {
       type = types.package;
       default = self.packages.${pkgs.stdenv.hostPlatform.system}.default;
-      defaultText = lib.literalExpression "mutiny.packages.\${system}.default";
+      defaultText = lib.literalExpression "bedlam.packages.\${system}.default";
     };
     amcPackage = mkOption {
       type = types.package;
@@ -58,7 +58,7 @@ in {
           };
         };
       });
-      description = "Every pool member, this host included. Mutiny trusts the list.";
+      description = "Every pool member, this host included. Bedlam trusts the list.";
     };
     secretFiles = mkOption {
       type = types.attrsOf types.str;
@@ -69,19 +69,19 @@ in {
       type = types.nullOr types.str;
       default = null;
       example = "/run/user/1000";
-      description = "Substituted for a literal `\${XDG_RUNTIME_DIR}` in `secretFiles`, which Mutiny reads verbatim.";
+      description = "Substituted for a literal `\${XDG_RUNTIME_DIR}` in `secretFiles`, which Bedlam reads verbatim.";
     };
   };
   config = lib.mkIf cfg.enable {
-    programs.mutiny.finalPackage = pkgs.symlinkJoin {
-      name = "mutiny-wrapped";
+    programs.bedlam.finalPackage = pkgs.symlinkJoin {
+      name = "bedlam-wrapped";
       paths = [cfg.package];
       nativeBuildInputs = [pkgs.makeWrapper];
-      postBuild = "wrapProgram $out/bin/mutiny --prefix PATH : ${lib.makeBinPath [cfg.amcPackage pkgs.openssh pkgs.systemd]}";
-      meta.mainProgram = "mutiny";
+      postBuild = "wrapProgram $out/bin/bedlam --prefix PATH : ${lib.makeBinPath [cfg.amcPackage pkgs.openssh pkgs.systemd]}";
+      meta.mainProgram = "bedlam";
     };
     home.packages = [cfg.finalPackage];
-    xdg.configFile."mutiny/pool.json".text = builtins.toJSON {
+    xdg.configFile."bedlam/pool.json".text = builtins.toJSON {
       inherit (cfg) user localHost contract;
       hosts = cfg.poolHosts;
       secretFiles = lib.mapAttrs (_: resolve) cfg.secretFiles;

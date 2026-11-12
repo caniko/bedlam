@@ -1,5 +1,5 @@
 # microsandbox runtime v0.7.13 (msb + guest agentd + libkrunfw), built from source.
-# Mutiny's `microsandbox` SDK crate runs sandboxes via `msb` and needs the pair
+# Bedlam's `microsandbox` SDK crate runs sandboxes via `msb` and needs the pair
 # MSB_PATH + MSB_LIBKRUNFW_PATH; agentd is embedded into msb (MSB_EMBED_ARTIFACTS_DIR).
 {pkgs}: let
   inherit (pkgs) lib;

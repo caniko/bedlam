@@ -99,7 +99,7 @@ impl Pool {
                     PathBuf::from(std::env::var_os("HOME").context("HOME unset")?).join(".config")
                 }
             }
-            .join("mutiny/pool.json"),
+            .join("bedlam/pool.json"),
         };
         let text =
             std::fs::read_to_string(&path).with_context(|| format!("read {}", path.display()))?;
@@ -109,7 +109,7 @@ impl Pool {
         Ok(pool)
     }
 
-    /// Run `mutiny <args>` on `host` (this binary locally, ssh elsewhere) and return stdout.
+    /// Run `bedlam <args>` on `host` (this binary locally, ssh elsewhere) and return stdout.
     pub async fn run_on(&self, host: &str, args: &[&str], stdin: Option<&str>) -> Result<String> {
         let mut cmd = if host == self.local_host {
             let mut c = Command::new(std::env::current_exe()?);
@@ -129,7 +129,7 @@ impl Pool {
                 // The remote login shell is nushell on the fleet, so argv travels
                 // as shell-neutral hex rather than POSIX quoting.
                 .arg(format!(
-                    "/etc/profiles/per-user/{}/bin/mutiny --argv-hex {}",
+                    "/etc/profiles/per-user/{}/bin/bedlam --argv-hex {}",
                     self.user,
                     hex(&serde_json::to_vec(args)?)
                 ));
