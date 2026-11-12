@@ -54,6 +54,9 @@ jobs:
       - name: Clippy all features
         run: nix develop -c cargo clippy --all-targets --all-features -- --deny warnings
 
+      - name: Package crate
+        run: nix develop -c cargo package --allow-dirty --list
+
   changes:
     name: Classify changed paths
     runs-on: ubuntu-latest
