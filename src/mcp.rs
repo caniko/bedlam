@@ -9,7 +9,7 @@ use serde_json::json;
 use std::sync::Arc;
 
 #[derive(Clone)]
-struct Mutiny(Arc<Pool>);
+struct Bedlam(Arc<Pool>);
 
 #[derive(Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "camelCase")]
@@ -43,8 +43,8 @@ struct WriteArgs {
     content: String,
 }
 
-impl Mutiny {
-    /// Run `mutiny host <args>` on the host named by the id prefix.
+impl Bedlam {
+    /// Run `bedlam host <args>` on the host named by the id prefix.
     async fn on(
         &self,
         id: &str,
@@ -63,7 +63,7 @@ impl Mutiny {
 }
 
 #[tool_router(server_handler)]
-impl Mutiny {
+impl Bedlam {
     #[tool(description = "Per-host sandbox capacity of the pool")]
     async fn pool_status(&self) -> String {
         serde_json::to_string(&self.0.gather().await).unwrap_or_default()
@@ -136,7 +136,7 @@ impl Mutiny {
 }
 
 pub async fn serve(pool: Pool) -> Result<()> {
-    Mutiny(Arc::new(pool))
+    Bedlam(Arc::new(pool))
         .serve(stdio())
         .await?
         .waiting()

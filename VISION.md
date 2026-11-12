@@ -1,9 +1,9 @@
-# Mutiny vision
+# Bedlam vision
 
-Mutiny is an open, self-hosted answer to hosted microVM sandbox services: it
+Bedlam is an open, self-hosted answer to hosted microVM sandbox services: it
 boots per-second microsandbox (libkrun) VMs on whichever host of a small pool
 has capacity, and exposes them to coding agents through a local stdio MCP
-server. The name is the crew taking back the boat — the point is that agent
+server. Formerly `mutiny`; the crates.io name was taken. The point is that agent
 code execution happens on hardware you own, with your own accounting and your
 own access rules.
 
@@ -29,17 +29,17 @@ to the guest.
 - **Secrets stay placeholders.** Values from `secretFiles` reach the guest only
   as placeholders, substituted in the `Authorization` header for github.com and
   api.github.com over verified TLS.
-- **Validate at the trust boundary.** Sandbox names must be `mu-` prefixed, repos
+- **Validate at the trust boundary.** Sandbox names must be `bd-` prefixed, repos
   exactly `owner/name`, and pool SSH pins host keys.
 - **Boring packaging.** The microsandbox runtime is packaged from source and its
-  crates are vendored by fixed-output hash, so consumers evaluate Mutiny without
+  crates are vendored by fixed-output hash, so consumers evaluate Bedlam without
   import-from-derivation.
 - **No surprise egress.** The guest is a digest-pinned `nixos/nix` image with
   flakes enabled and public-only egress under the runtime's default policy.
 
 ## Scope
 
-- pool placement and per-host status (`mutiny host status|run|exec|read|write|
+- pool placement and per-host status (`bedlam host status|run|exec|read|write|
   fork|snapshot|destroy|list`)
 - stdio MCP server with `pool_status`, `sandbox_create`, and sandbox operations
 - AMC admission integration and lease lifetime
@@ -55,7 +55,7 @@ the guest, egress, and budget behaviour, and adding a cargo-deny policy.
 
 ## Place in the fleet
 
-Canix declares Mutiny as a flake input, renders `pool.json` at
-`$XDG_CONFIG_HOME/mutiny/pool.json`, and lists Mutiny among the MCP servers that
+Canix declares Bedlam as a flake input, renders `pool.json` at
+`$XDG_CONFIG_HOME/bedlam/pool.json`, and lists Bedlam among the MCP servers that
 Atlas agent harnesses load, so agents can create and use sandboxes through the
 local server.

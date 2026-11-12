@@ -13,7 +13,7 @@ use tokio::signal::unix::{SignalKind, signal};
 
 /// Guest overhead on top of the VM's RAM when sizing the AMC reservation.
 const OVERHEAD_MIB: u64 = 512;
-const PREFIX: &str = "mu-";
+const PREFIX: &str = "bd-";
 
 #[derive(Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -35,7 +35,7 @@ fn safe(s: &str, extra: &str) -> bool {
             .all(|c| c.is_ascii_alphanumeric() || "_.-".contains(c) || extra.contains(c))
 }
 
-/// Trust boundary: names reach the microsandbox DB and systemd unit names; only ours (`mu-…`).
+/// Trust boundary: names reach the microsandbox DB and systemd unit names; only ours (`bd-…`).
 fn check_name(n: &str) -> Result<()> {
     ensure!(safe(n, "") && n.starts_with(PREFIX), "bad sandbox name");
     Ok(())
@@ -85,7 +85,7 @@ fn suffix() -> String {
 
 fn ready_file(name: &str) -> Result<PathBuf> {
     let dir = PathBuf::from(std::env::var_os("XDG_RUNTIME_DIR").context("XDG_RUNTIME_DIR unset")?)
-        .join("mutiny");
+        .join("bedlam");
     std::fs::create_dir_all(&dir)?;
     Ok(dir.join(format!("{name}.ready")))
 }
@@ -99,7 +99,7 @@ fn carried() -> impl Iterator<Item = (&'static str, String)> {
         .filter_map(|k| std::env::var(k).ok().map(|v| (k, v)))
 }
 
-/// `host run`: start `mutiny host admit` in a transient user unit (independent of this SSH session)
+/// `host run`: start `bedlam host admit` in a transient user unit (independent of this SSH session)
 /// and print the id once the sandbox is ready.
 pub async fn run(pool: &Pool, spec_json: &str) -> Result<()> {
     let mut spec: Spec = serde_json::from_str(spec_json).context("parse --spec")?;
@@ -110,7 +110,7 @@ pub async fn run(pool: &Pool, spec_json: &str) -> Result<()> {
         .clone();
     let ready = ready_file(&name)?;
     let _ = std::fs::remove_file(&ready);
-    let unit = format!("mutiny-{name}");
+    let unit = format!("bedlam-{name}");
     let status = Command::new("systemd-run")
         .args(["--user", "--quiet", "--collect", "--unit", &unit])
         .args(carried().map(|(k, v)| format!("--setenv={k}={v}")))
@@ -187,7 +187,7 @@ fn builder(pool: &Pool, spec: &Spec, name: &str) -> SandboxBuilder {
         // ponytail: every secret is released only to GitHub hosts; add per-secret hosts to pool.json for other providers
         b = b.secret(|s| {
             s.env(key)
-                .source(SecretSource::env(format!("MUTINY_SECRET_{key}")))
+                .source(SecretSource::env(format!("BEDLAM_SECRET_{key}")))
                 .allow("github.com")
                 .allow("api.github.com")
                 .substitute_in_header_fields(["Authorization"])
@@ -338,22 +338,22 @@ mod tests {
 
     #[test]
     fn validation() {
-        assert!(spec("caniko/mutiny", "trunk").validate().is_ok());
+        assert!(spec("caniko/bedlam", "trunk").validate().is_ok());
         for bad in ["../x", "a/b/c", "-x", "a/..", "./b", "a/", "/b", "nobar"] {
             assert!(spec(bad, "trunk").validate().is_err(), "repo {bad}");
         }
         let named = |name: &str, fork_of: Option<&str>| Spec {
             name: Some(name.into()),
             fork_of: fork_of.map(Into::into),
-            ..spec("caniko/mutiny", "trunk")
+            ..spec("caniko/bedlam", "trunk")
         };
-        assert!(named("mu-ok", Some("mu-src")).validate().is_ok());
-        assert!(named("other", None).validate().is_err(), "name needs mu-");
+        assert!(named("bd-ok", Some("bd-src")).validate().is_ok());
+        assert!(named("other", None).validate().is_err(), "name needs bd-");
         assert!(
-            named("mu-ok", Some("src")).validate().is_err(),
-            "fork_of needs mu-"
+            named("bd-ok", Some("src")).validate().is_err(),
+            "fork_of needs bd-"
         );
-        assert!(check_name("mu-a;rm").is_err());
+        assert!(check_name("bd-a;rm").is_err());
     }
 
     #[tokio::test]
@@ -368,7 +368,7 @@ mod tests {
             path: PathBuf::new(),
         };
         let name = format!("{PREFIX}test-{}", suffix());
-        let sb = builder(&pool, &spec("caniko/mutiny", "trunk"), &name)
+        let sb = builder(&pool, &spec("caniko/bedlam", "trunk"), &name)
             .create()
             .await
             .unwrap();

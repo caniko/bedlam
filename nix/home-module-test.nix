@@ -18,7 +18,7 @@
           config = {
             _module.args = {inherit pkgs;};
             home.username = "tester";
-            programs.mutiny = {
+            programs.bedlam = {
               enable = true;
               amcPackage = pkgs.hello;
               localHost = "a";
@@ -40,7 +40,7 @@
           };
         }
       ];
-    }).config.xdg.configFile."mutiny/pool.json".text;
+    }).config.xdg.configFile."bedlam/pool.json".text;
 in
   assert pool
   == {
@@ -63,4 +63,4 @@ in
     ];
     secretFiles.GITHUB_TOKEN = "/run/user/1000/token";
   };
-    pkgs.runCommand "mutiny-home-module" {} "touch $out"
+    pkgs.runCommand "bedlam-home-module" {} "touch $out"

@@ -2,7 +2,8 @@
 
 ## Unreleased
 
-- `homeModules.default`: `programs.mutiny` installs the binary wrapped with `amc`, `ssh` and `systemd` on `PATH` and renders `pool.json` from `poolHosts`, `secretFiles` and `runtimeDir`.
+- Rename the project from `mutiny` to `bedlam` because the crates.io name `mutiny` is taken: crate, binary, MCP server, Home Manager module (`programs.bedlam`), config directory (`$XDG_CONFIG_HOME/bedlam/pool.json`), transient units (`bedlam-<name>`), secret environment variables (`BEDLAM_SECRET_*`) and sandbox name prefix (`bd-`).
+- `homeModules.default`: `programs.bedlam` installs the binary wrapped with `amc`, `ssh` and `systemd` on `PATH` and renders `pool.json` from `poolHosts`, `secretFiles` and `runtimeDir`.
 
 ## 0.1.1 - 2026-11-03
 

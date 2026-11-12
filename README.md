@@ -1,4 +1,4 @@
-# Mutiny
+# Bedlam
 
 <!-- simit:badges:start -->
 
@@ -7,16 +7,16 @@
 <!-- simit:badges:end -->
 
 Open, self-hosted answer to [boat.dev](https://boat.dev): per-second microVM sandboxes for coding agents,
-on your own hardware. The name is the crew taking back the boat.
+on your own hardware. Formerly `mutiny`; the crates.io name was taken.
 
-Mutiny boots [microsandbox](https://github.com/superradcompany/microsandbox) (libkrun) VMs on whichever host of a
+Bedlam boots [microsandbox](https://github.com/superradcompany/microsandbox) (libkrun) VMs on whichever host of a
 small pool has capacity according to [AMC](https://github.com/caniko/amc) admission, and exposes them to agents
 through a local stdio MCP server.
 
 ## pool.json
 
-Read from `$XDG_CONFIG_HOME/mutiny/pool.json` (or pass `--pool <path>`). Weak hosts are excluded
-upstream; Mutiny trusts `hosts`.
+Read from `$XDG_CONFIG_HOME/bedlam/pool.json` (or pass `--pool <path>`). Weak hosts are excluded
+upstream; Bedlam trusts `hosts`.
 
 ```json
 {
@@ -28,21 +28,21 @@ upstream; Mutiny trusts `hosts`.
 }
 ```
 
-`homeModules.default` renders this file and installs `mutiny` wrapped with `amc`, `ssh` and `systemd` on `PATH`:
-`programs.mutiny.{enable, amcPackage, localHost, poolHosts, secretFiles, runtimeDir}`; the wrapped binary is
-`programs.mutiny.finalPackage`.
+`homeModules.default` renders this file and installs `bedlam` wrapped with `amc`, `ssh` and `systemd` on `PATH`:
+`programs.bedlam.{enable, amcPackage, localHost, poolHosts, secretFiles, runtimeDir}`; the wrapped binary is
+`programs.bedlam.finalPackage`.
 
 Hosts take an optional `"priority"` (u8, default 0, e.g. 1 for workers): placement prefers the highest priority, then the most free budget, then `localHost`.
 
-Every host needs `mutiny` and `amc` (the `amc admission exec` CLI) on its non-interactive `PATH`, a shared `pool.json`, and key-based SSH.
+Every host needs `bedlam` and `amc` (the `amc admission exec` CLI) on its non-interactive `PATH`, a shared `pool.json`, and key-based SSH.
 
 ## Commands
 
-- `mutiny host status --json` - `{host, eligible, freeBudgetMiB, memAvailableMiB, memFullPsi, onAc, reason?}`.
+- `bedlam host status --json` - `{host, eligible, freeBudgetMiB, memAvailableMiB, memFullPsi, onAc, reason?}`.
   Missing or duplicate readings, or no read-write `/dev/kvm`, make the host ineligible.
-- `mutiny host run --spec '{"repo":"o/r","ref":"main","cpus":2,"memoryMiB":2048}'` - start a sandbox here, print `{"id":"<host>:<name>"}`.
-- `mutiny host exec|read|write|fork|snapshot|destroy|list` - operate on local sandboxes by name (`write` takes content on stdin).
-- `mutiny mcp` - stdio MCP server.
+- `bedlam host run --spec '{"repo":"o/r","ref":"main","cpus":2,"memoryMiB":2048}'` - start a sandbox here, print `{"id":"<host>:<name>"}`.
+- `bedlam host exec|read|write|fork|snapshot|destroy|list` - operate on local sandboxes by name (`write` takes content on stdin).
+- `bedlam mcp` - stdio MCP server.
 
 ## MCP tools
 
@@ -50,11 +50,11 @@ Every host needs `mutiny` and `amc` (the `amc admission exec` CLI) on its non-in
 `write_file {id, path, content}`, `fork {id}`, `snapshot {id}`, `destroy {id}`, `list`.
 
 `sandbox_create` queries all hosts in parallel (12 s cap), drops ineligible or unreachable ones, picks the most
-free AMC budget (ties go to the local host) and runs `mutiny host run` there. Other tools route by the id's host prefix.
+free AMC budget (ties go to the local host) and runs `bedlam host run` there. Other tools route by the id's host prefix.
 
 ## AMC lease semantics
 
-`host run` re-execs itself in a transient `systemd-run --user --unit mutiny-<name>` and returns once the VM is ready.
+`host run` re-execs itself in a transient `systemd-run --user --unit bedlam-<name>` and returns once the VM is ready.
 That unit queues for AMC admission via `amc admission exec --queue` (contract from `pool.json`, memory = VM RAM + 512 MiB, 5 min wait) and holds the
 lease for the VM's lifetime, independent of the launching SSH session. Destroying the sandbox (or stopping the unit)
 ends the VM and releases the lease.
@@ -67,7 +67,7 @@ The guest is `docker.io/nixos/nix`, pinned by digest (Nix 2.35.4), with a 16 GiB
 (a leftover `sccacheDir` in an old `pool.json` is ignored).
 
 Egress uses microsandbox's default policy (the `Public` profile): public internet only, private/LAN ranges and the host
-are denied. Mutiny sets no network policy of its own.
+are denied. Bedlam sets no network policy of its own.
 
 Secrets from `secretFiles` go through microsandbox's secret proxy: the guest sees a placeholder, and the real value is
 substituted only in the `Authorization` header of requests to `github.com` / `api.github.com`, and only after the proxy
@@ -81,7 +81,7 @@ A host's free budget is the AMC `admission status` of the user's ledger; if the 
 (`/run/amc-host/admission.sock`) exists it is the lower of that and `admission host-status`, and an unreadable
 broker makes the host ineligible.
 
-Sandbox names must be `mu-` prefixed with `[A-Za-z0-9_.-]`, for every verb and for `forkOf`; `repo` must be exactly
+Sandbox names must be `bd-` prefixed with `[A-Za-z0-9_.-]`, for every verb and for `forkOf`; `repo` must be exactly
 `owner/name`. SSH to pool hosts uses `StrictHostKeyChecking=yes`, so add each host key to `known_hosts` first.
 
 ## Security

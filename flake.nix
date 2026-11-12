@@ -1,5 +1,5 @@
 {
-  description = "Mutiny: pooled microVM sandboxes for coding agents";
+  description = "Bedlam: pooled microVM sandboxes for coding agents";
 
   inputs = {
     harbor.url = "git+https://github.com/caniko/harbor.git?ref=feat/harbor-monorepo-components&rev=7d99eb50c52d0a941e2996b97c469b32a7657ef4";
@@ -51,7 +51,7 @@
           inherit cargoArtifacts;
           nativeBuildInputs = pkgs.lib.optional isLinux pkgs.makeWrapper;
           postInstall = pkgs.lib.optionalString isLinux ''
-            wrapProgram $out/bin/mutiny \
+            wrapProgram $out/bin/bedlam \
               --set-default MSB_PATH ${msbRuntime.msb}/bin/msb \
               --set-default MSB_LIBKRUNFW_PATH ${msbRuntime.libkrunfw}/lib/libkrunfw.so.5.6.1
           '';
