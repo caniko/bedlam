@@ -1,10 +1,11 @@
 [package]
 name = "bedlam"
-publish = false
-version = "0.1.1"
+publish = true
+version = "0.2.0"
 edition = "2024"
 license = "Apache-2.0"
 description = "Self-hosted microVM sandboxes for coding agents, placed by AMC admission"
+repository = "https://github.com/caniko/bedlam"
 
 [dependencies]
 anyhow = "1"
