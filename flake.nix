@@ -3,6 +3,10 @@
 
   inputs = {
     harbor.url = "git+https://github.com/caniko/harbor.git?ref=feat/harbor-monorepo-components&rev=7d99eb50c52d0a941e2996b97c469b32a7657ef4";
+    # codeberg.org no longer resolves, and the plinth revision that harbor's simit
+    # pins fetches nix-pklx and rs-harbor from it. Use plinth's GitHub trunk instead.
+    harbor.inputs.simit.inputs.plinth.url = "git+https://github.com/caniko/plinth.git?ref=trunk&rev=acc4b6e0ebeb5f66ffd5292626606d39dd0526bb";
+    harbor.inputs.simit.inputs.plinth.inputs.nixpkgs.follows = "harbor/simit/nixpkgs";
     nixpkgs.follows = "harbor/nixpkgs";
     rust-overlay.follows = "harbor/rust-overlay";
     crane.follows = "harbor/crane";
